@@ -1,0 +1,95 @@
+version: '3.8'
+
+services:
+  # Insight-X API Server
+  insight-x-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: insight-x-api
+    ports:
+      - "8000:8000"
+    environment:
+      - APP_NAME=Insight-X
+      - DEBUG=false
+      - LLM_PROVIDER=${LLM_PROVIDER:-anthropic}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - LLM_MODEL=${LLM_MODEL:-claude-sonnet-4-20250514}
+      - DATABASE_URL=postgresql+asyncpg://insight:insight@postgres:5432/insight_x
+      - SANDBOX_IMAGE=python:3.11-slim
+      - SANDBOX_MEMORY_LIMIT=2g
+      - SANDBOX_CPU_QUOTA=100000
+      - SANDBOX_TIMEOUT=300
+      - REDIS_URL=redis://redis:6379/0
+    volumes:
+      # Mount Docker socket for sandbox execution
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - insight-x-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: insight-x-postgres
+    environment:
+      - POSTGRES_USER=insight
+      - POSTGRES_PASSWORD=insight
+      - POSTGRES_DB=insight_x
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - insight-x-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U insight -d insight_x"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis for task queue (optional)
+  redis:
+    image: redis:7-alpine
+    container_name: insight-x-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - insight-x-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Sandbox executor container (pre-pulled for faster execution)
+  sandbox-base:
+    image: python:3.11-slim
+    container_name: insight-x-sandbox-base
+    command: ["echo", "Sandbox base image ready"]
+    networks:
+      - insight-x-network
+
+networks:
+  insight-x-network:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  redis-data:
