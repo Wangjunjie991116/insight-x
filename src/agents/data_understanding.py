@@ -31,41 +31,7 @@ class DataUnderstandingAgent(BaseAgent[DatabaseConfig, DataDictionary]):
         Returns:
             DataDictionary with table info and relations
         """
-        self._log_execution("Connecting to database...")
-        connector = DatabaseConnector(input_data)
-
-        try:
-            # Step 1: Get schema information
-            self._log_execution("Fetching schema information...")
-            schema_info = await connector.get_schema_info()
-
-            # Step 2: Get table names
-            table_names = await connector.get_table_names()
-
-            # Step 3: Get sample data for each table (limited)
-            self._log_execution(f"Fetching sample data for {len(table_names)} tables...")
-            sample_data: dict[str, list[dict[str, Any]]] = {}
-            for table in table_names[:10]:  # Limit to first 10 tables
-                sample_data[table] = await connector.get_sample_data(table, limit=50)
-
-            # Step 4: Call LLM to generate data dictionary
-            self._log_execution("Generating data dictionary with LLM...")
-            system_prompt, user_prompt = PromptTemplates.format_data_understanding(
-                business_doc="",  # Will be passed separately
-                schema_info=json.dumps(schema_info, indent=2, default=str),
-                sample_data=json.dumps(sample_data, indent=2, default=str),
-            )
-
-            response = await self._call_llm(system_prompt, user_prompt)
-
-            # Step 5: Parse response to DataDictionary
-            data_dict = self._parse_response(response)
-
-            self._log_execution("Data dictionary generated successfully")
-            return data_dict
-
-        finally:
-            await connector.close()
+        return await self.execute_with_context(input_data, "")
 
     def _parse_response(self, response: str) -> DataDictionary:
         """Parse LLM response to DataDictionary."""
@@ -77,8 +43,8 @@ class DataUnderstandingAgent(BaseAgent[DatabaseConfig, DataDictionary]):
                 json_str = response[json_start:json_end]
                 data = json.loads(json_str)
                 return DataDictionary(**data)
-        except (json.JSONDecodeError, ValueError):
-            pass
+        except (json.JSONDecodeError, ValueError, TypeError, KeyError) as e:
+            self._log_execution(f"Failed to parse LLM response: {e}")
 
         # Return empty dictionary if parsing fails
         return DataDictionary(
@@ -106,21 +72,38 @@ class DataUnderstandingAgent(BaseAgent[DatabaseConfig, DataDictionary]):
         connector = DatabaseConnector(db_config)
 
         try:
-            schema_info = await connector.get_schema_info()
-            table_names = await connector.get_table_names()
+            # Database operations
+            try:
+                self._log_execution("Fetching schema information...")
+                schema_info = await connector.get_schema_info()
 
-            sample_data: dict[str, list[dict[str, Any]]] = {}
-            for table in table_names[:10]:
-                sample_data[table] = await connector.get_sample_data(table, limit=50)
+                self._log_execution("Fetching table names...")
+                table_names = await connector.get_table_names()
 
-            system_prompt, user_prompt = PromptTemplates.format_data_understanding(
-                business_doc=business_doc,
-                schema_info=json.dumps(schema_info, indent=2, default=str),
-                sample_data=json.dumps(sample_data, indent=2, default=str),
-            )
+                self._log_execution(f"Fetching sample data for {len(table_names)} tables...")
+                sample_data: dict[str, list[dict[str, Any]]] = {}
+                for table in table_names[:10]:
+                    sample_data[table] = await connector.get_sample_data(table, limit=50)
+            except Exception as e:
+                self._log_execution(f"Database operation failed: {e}")
+                raise
 
-            response = await self._call_llm(system_prompt, user_prompt)
-            return self._parse_response(response)
+            # LLM operation
+            try:
+                self._log_execution("Generating data dictionary with LLM...")
+                system_prompt, user_prompt = PromptTemplates.format_data_understanding(
+                    business_doc=business_doc,
+                    schema_info=json.dumps(schema_info, indent=2, default=str),
+                    sample_data=json.dumps(sample_data, indent=2, default=str),
+                )
+                response = await self._call_llm(system_prompt, user_prompt)
+            except Exception as e:
+                self._log_execution(f"LLM call failed: {e}")
+                raise
+
+            result = self._parse_response(response)
+            self._log_execution("Data dictionary generated successfully")
+            return result
 
         finally:
             await connector.close()
