@@ -6,12 +6,12 @@ from .base import BaseAgent
 # from .analysis_strategy import AnalysisStrategyAgent
 # from .code_execution import CodeExecutionAgent
 # from .code_generation import CodeGenerationAgent
-# from .data_understanding import DataUnderstandingAgent
+from .data_understanding import DataUnderstandingAgent
 # from .insight_generation import InsightGenerationAgent
 
 __all__ = [
     "BaseAgent",
-    # "DataUnderstandingAgent",
+    "DataUnderstandingAgent",
     # "AnalysisStrategyAgent",
     # "CodeGenerationAgent",
     # "CodeExecutionAgent",
