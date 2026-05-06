@@ -61,6 +61,7 @@ class SandboxExecutor:
     ) -> SandboxResult:
         """Execute Python code in sandbox."""
         start_time = time.time()
+        container = None
 
         # Create temporary directory for code
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -71,18 +72,28 @@ class SandboxExecutor:
             full_code = self._prepare_code(code, db_config)
             code_file.write_text(full_code)
 
-            # Run container
             try:
-                container = self._run_container(tmpdir, timeout)
+                container = self._run_container(code_file, timeout)
+
+                # Wait for container and check exit code
+                result = container.wait(timeout=self._settings.sandbox_timeout)
+                exit_code = result.get("StatusCode", 0)
+
                 logs = container.logs().decode("utf-8")
 
                 # Get output
-                output = self._get_output(container, output_file, tmpdir)
-
-                # Cleanup
-                container.remove()
+                output = self._get_output(output_file)
 
                 duration_ms = int((time.time() - start_time) * 1000)
+
+                if exit_code != 0:
+                    return SandboxResult(
+                        success=False,
+                        output=output,
+                        logs=logs,
+                        error=f"Execution failed with exit code {exit_code}",
+                        duration_ms=duration_ms,
+                    )
 
                 return SandboxResult(
                     success=True,
@@ -100,6 +111,12 @@ class SandboxExecutor:
                     error=str(e),
                     duration_ms=duration_ms,
                 )
+            finally:
+                if container:
+                    try:
+                        container.remove(force=True)
+                    except Exception:
+                        pass
 
     def _prepare_code(self, code: str, db_config: dict[str, Any] | None) -> str:
         """Prepare code with output capture."""
@@ -128,15 +145,15 @@ except Exception as e:
         json.dump({{"error": str(e)}}, f)
 '''
 
-    def _run_container(self, tmpdir: str, timeout: int | None) -> Container:
-        """Run Docker container."""
+    def _run_container(self, code_file: Path, timeout: int | None) -> Container:
+        """Run Docker container with security hardening."""
         timeout = timeout or self._settings.sandbox_timeout
 
         return self._client.containers.run(
             self._settings.sandbox_image,
             command=f"python /tmp/analysis.py",
             volumes={
-                tmpdir: {"bind": "/tmp", "mode": "rw"},
+                str(code_file): {"bind": "/tmp/analysis.py", "mode": "ro"},
             },
             environment={
                 "PYTHONUNBUFFERED": "1",
@@ -144,20 +161,22 @@ except Exception as e:
             mem_limit=self._settings.sandbox_memory_limit,
             cpu_quota=self._settings.sandbox_cpu_quota,
             network_mode="none",
+            security_opt=["no_new_privileges:true"],
+            cap_drop=["ALL"],
+            read_only=True,
             detach=True,
         )
 
-    def _get_output(
-        self,
-        container: Container,
-        output_file: Path,
-        tmpdir: str,
-    ) -> dict[str, Any]:
+    def _get_output(self, output_file: Path) -> dict[str, Any]:
         """Get output from container."""
-        container.wait(timeout=self._settings.sandbox_timeout)
-
-        output_path = Path(tmpdir) / "output.json"
-        if output_path.exists():
-            return json.loads(output_path.read_text())
+        if output_file.exists():
+            try:
+                content = output_file.read_text()
+                if content.strip():
+                    return json.loads(content)
+            except json.JSONDecodeError as e:
+                return {"error": f"JSON decode error: {e}", "raw_output": content}
+            except Exception as e:
+                return {"error": f"Failed to read output: {e}"}
 
         return {"status": "no_output"}
