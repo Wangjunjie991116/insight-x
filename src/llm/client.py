@@ -36,8 +36,11 @@ class LLMClient:
 
     async def ainvoke(self, prompt: str) -> str:
         """Invoke LLM asynchronously."""
-        response: BaseMessage = await self._model.ainvoke(prompt)
-        return str(response.content)
+        try:
+            response: BaseMessage = await self._model.ainvoke(prompt)
+            return str(response.content)
+        except Exception as e:
+            raise RuntimeError(f"LLM async invocation failed: {e}") from e
 
     async def ainvoke_with_system(self, system_prompt: str, user_prompt: str) -> str:
         """Invoke LLM with separate system and user prompts."""
@@ -47,13 +50,19 @@ class LLMClient:
             SystemMessage(content=system_prompt),
             HumanMessage(content=user_prompt),
         ]
-        response = await self._model.ainvoke(messages)
-        return str(response.content)
+        try:
+            response = await self._model.ainvoke(messages)
+            return str(response.content)
+        except Exception as e:
+            raise RuntimeError(f"LLM async invocation with system prompt failed: {e}") from e
 
     def invoke(self, prompt: str) -> str:
         """Invoke LLM synchronously."""
-        response: BaseMessage = self._model.invoke(prompt)
-        return str(response.content)
+        try:
+            response: BaseMessage = self._model.invoke(prompt)
+            return str(response.content)
+        except Exception as e:
+            raise RuntimeError(f"LLM sync invocation failed: {e}") from e
 
 
 def get_llm_client() -> LLMClient:

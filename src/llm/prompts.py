@@ -123,3 +123,30 @@ class PromptTemplates:
                 business_goal=business_goal,
             ),
         )
+
+    @classmethod
+    def format_code_generation(
+        cls, data_dict: DataDictionary, strategy: str, db_config: str
+    ) -> tuple[str, str]:
+        """Format code generation prompts."""
+        return (
+            cls.CODE_GENERATION_SYSTEM,
+            cls.CODE_GENERATION_USER.format(
+                data_dict=data_dict.model_dump_json(),
+                strategy=strategy,
+                db_config=db_config,
+            ),
+        )
+
+    @classmethod
+    def format_insight_generation(
+        cls, data_dict: DataDictionary, stats: str
+    ) -> tuple[str, str]:
+        """Format insight generation prompts."""
+        return (
+            cls.INSIGHT_GENERATION_SYSTEM,
+            cls.INSIGHT_GENERATION_USER.format(
+                data_dict=data_dict.model_dump_json(),
+                stats=stats,
+            ),
+        )
