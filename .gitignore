@@ -51,3 +51,6 @@ uv.lock
 
 # Docs build
 docs/_build/
+
+# Superpowers docs
+docs/superpowers/
