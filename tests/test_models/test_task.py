@@ -56,3 +56,22 @@ def test_task_status_transitions():
 
     task.mark_completed()
     assert task.status == TaskStatus.COMPLETED
+
+
+def test_task_mark_failed():
+    """Test that mark_failed sets status to FAILED."""
+    task = AnalysisTask(
+        task_id="test-123",
+        team_id="team-a",
+        db_config=DatabaseConfig(
+            host="localhost",
+            database="test_db",
+            user="test_user",
+            password="test_pass",
+        ),
+        business_doc="Test",
+        business_goal="Test",
+    )
+
+    task.mark_failed()
+    assert task.status == TaskStatus.FAILED
