@@ -1,11 +1,10 @@
 """Database connector for querying data."""
 
+import re
 from typing import Any
 
-import asyncpg
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from src.models.task import DatabaseConfig
 
@@ -26,7 +25,7 @@ class DatabaseConnector:
             pool_size=5,
             max_overflow=10,
         )
-        self._session_factory = sessionmaker(
+        self._session_factory = async_sessionmaker(
             self._engine,
             class_=AsyncSession,
             expire_on_commit=False,
@@ -45,9 +44,12 @@ class DatabaseConnector:
             ORDER BY table_name, ordinal_position
         """)
 
-        async with self._session_factory() as session:
-            result = await session.execute(query, {"schema": self._config.schema_})
-            return [dict(row._mapping) for row in result.fetchall()]
+        try:
+            async with self._session_factory() as session:
+                result = await session.execute(query, {"schema": self._config.schema_})
+                return [dict(row._mapping) for row in result.fetchall()]
+        except Exception as e:
+            raise RuntimeError(f"Failed to get schema info: {e}") from e
 
     async def get_table_names(self) -> list[str]:
         """Get list of table names."""
@@ -58,40 +60,60 @@ class DatabaseConnector:
             AND table_type = 'BASE TABLE'
         """)
 
-        async with self._session_factory() as session:
-            result = await session.execute(query, {"schema": self._config.schema_})
-            return [row[0] for row in result.fetchall()]
+        try:
+            async with self._session_factory() as session:
+                result = await session.execute(query, {"schema": self._config.schema_})
+                return [row[0] for row in result.fetchall()]
+        except Exception as e:
+            raise RuntimeError(f"Failed to get table names: {e}") from e
 
     async def get_sample_data(self, table_name: str, limit: int = 100) -> list[dict[str, Any]]:
         """Get sample data from a table."""
-        # Use parameterized query safely
-        if not table_name.replace("_", "").isalnum():
+        # Validate table name with strict regex
+        if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', table_name):
             raise ValueError(f"Invalid table name: {table_name}")
 
         query = text(f'SELECT * FROM "{table_name}" LIMIT {limit}')
 
-        async with self._session_factory() as session:
-            result = await session.execute(query)
-            return [dict(row._mapping) for row in result.fetchall()]
+        try:
+            async with self._session_factory() as session:
+                result = await session.execute(query)
+                return [dict(row._mapping) for row in result.fetchall()]
+        except Exception as e:
+            raise RuntimeError(f"Failed to get sample data from table '{table_name}': {e}") from e
 
     async def execute_query(self, sql: str) -> list[dict[str, Any]]:
         """Execute a SQL query and return results."""
+        # Security: Only allow SELECT queries to prevent SQL injection
+        if not sql.strip().upper().startswith('SELECT'):
+            raise ValueError("Only SELECT queries are allowed for security reasons")
+
         query = text(sql)
 
-        async with self._session_factory() as session:
-            result = await session.execute(query)
-            return [dict(row._mapping) for row in result.fetchall()]
+        try:
+            async with self._session_factory() as session:
+                result = await session.execute(query)
+                return [dict(row._mapping) for row in result.fetchall()]
+        except Exception as e:
+            raise RuntimeError(f"Failed to execute query: {e}") from e
 
     async def execute_aggregation(self, sql: str) -> dict[str, Any]:
         """Execute aggregation query for statistics."""
+        # Security: Only allow SELECT queries to prevent SQL injection
+        if not sql.strip().upper().startswith('SELECT'):
+            raise ValueError("Only SELECT queries are allowed for security reasons")
+
         query = text(sql)
 
-        async with self._session_factory() as session:
-            result = await session.execute(query)
-            rows = result.fetchall()
-            if rows:
-                return dict(rows[0]._mapping)
-            return {}
+        try:
+            async with self._session_factory() as session:
+                result = await session.execute(query)
+                rows = result.fetchall()
+                if rows:
+                    return dict(rows[0]._mapping)
+                return {}
+        except Exception as e:
+            raise RuntimeError(f"Failed to execute aggregation query: {e}") from e
 
     async def close(self) -> None:
         """Close database connection."""
