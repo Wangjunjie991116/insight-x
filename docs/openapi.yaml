@@ -1,0 +1,489 @@
+openapi: 3.1.0
+info:
+  title: Insight-X API
+  description: |
+    AI Agent 自动化数据分析平台 API
+
+    ## 工作流
+
+    1. 创建分析任务 (POST /api/v1/tasks)
+    2. 执行分析 (POST /api/v1/tasks/{task_id}/run)
+    3. 获取结果 (GET /api/v1/tasks/{task_id}/result)
+
+    ## Agent 流程
+
+    - Agent 1: 数据理解 → 生成数据字典
+    - Agent 2: 分析策略 → 设计分析方案
+    - Agent 3: 代码生成 → 生成 Python 代码
+    - Agent 4: 代码执行 → Docker 沙箱执行
+    - Agent 5: 洞察生成 → 输出业务洞察
+  version: 0.1.0
+  contact:
+    name: Insight-X Team
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:8000
+    description: 开发服务器
+  - url: https://api.insight-x.example.com
+    description: 生产服务器
+
+tags:
+  - name: health
+    description: 健康检查
+  - name: tasks
+    description: 任务管理
+  - name: results
+    description: 分析结果
+
+paths:
+  /health:
+    get:
+      tags:
+        - health
+      summary: 健康检查
+      description: 检查服务是否正常运行
+      operationId: health_check
+      responses:
+        '200':
+          description: 服务正常
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /api/v1/tasks:
+    post:
+      tags:
+        - tasks
+      summary: 创建分析任务
+      description: |
+        创建一个新的数据分析任务。
+
+        需要提供：
+        - 团队 ID（用于数据隔离）
+        - 数据库连接配置
+        - 业务文档（描述数据背景）
+        - 业务目标（分析目标）
+      operationId: create_task
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTaskRequest'
+      responses:
+        '201':
+          description: 任务创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskResponse'
+        '400':
+          description: 请求参数错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: 验证失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/tasks/{task_id}:
+    get:
+      tags:
+        - tasks
+      summary: 获取任务详情
+      description: 根据 ID 获取任务状态和基本信息
+      operationId: get_task
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          description: 任务 ID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 任务详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskResponse'
+        '404':
+          description: 任务不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/tasks/{task_id}/run:
+    post:
+      tags:
+        - tasks
+      summary: 执行分析任务
+      description: |
+        启动 Agent 流程执行分析：
+
+        1. Agent 1 分析数据库结构
+        2. Agent 2 设计分析策略
+        3. Agent 3 生成分析代码
+        4. Agent 4 在沙箱中执行
+        5. Agent 5 生成业务洞察
+
+        执行时间取决于数据量和复杂度，通常 30 秒到 5 分钟。
+      operationId: run_analysis
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          description: 任务 ID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 分析完成
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalysisResult'
+        '404':
+          description: 任务不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 执行失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/tasks/{task_id}/result:
+    get:
+      tags:
+        - results
+      summary: 获取分析结果
+      description: 获取完整的分析结果，包括数据字典、洞察、策略等
+      operationId: get_result
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          description: 任务 ID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 分析结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalysisResult'
+        '404':
+          description: 结果不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  schemas:
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy]
+          example: healthy
+      required:
+        - status
+
+    DatabaseConfig:
+      type: object
+      description: 数据库连接配置
+      properties:
+        host:
+          type: string
+          description: 数据库主机
+          example: localhost
+        port:
+          type: integer
+          description: 端口号
+          default: 5432
+          example: 5432
+        database:
+          type: string
+          description: 数据库名
+          example: mydb
+        user:
+          type: string
+          description: 用户名
+          example: postgres
+        password:
+          type: string
+          description: 密码
+          format: password
+          example: secret
+        schema:
+          type: string
+          description: Schema 名称
+          default: public
+          example: public
+      required:
+        - host
+        - database
+        - user
+        - password
+
+    CreateTaskRequest:
+      type: object
+      description: 创建任务请求
+      properties:
+        team_id:
+          type: string
+          description: 团队 ID（用于数据隔离）
+          example: team-001
+        db_config:
+          $ref: '#/components/schemas/DatabaseConfig'
+        business_doc:
+          type: string
+          description: 业务文档，描述数据背景和业务场景
+          maxLength: 5000
+          example: 电商用户行为分析，包含订单、用户、商品表
+        business_goal:
+          type: string
+          description: 分析目标
+          maxLength: 500
+          example: 分析转化漏斗，找出流失点
+      required:
+        - team_id
+        - db_config
+        - business_doc
+        - business_goal
+
+    TaskStatus:
+      type: string
+      enum:
+        - pending
+        - running
+        - completed
+        - failed
+      description: 任务状态
+
+    TaskResponse:
+      type: object
+      description: 任务响应
+      properties:
+        task_id:
+          type: string
+          format: uuid
+          description: 任务 ID
+        team_id:
+          type: string
+          description: 团队 ID
+        status:
+          $ref: '#/components/schemas/TaskStatus'
+        created_at:
+          type: string
+          format: date-time
+          description: 创建时间
+        updated_at:
+          type: string
+          format: date-time
+          description: 更新时间
+        message:
+          type: string
+          description: 提示信息
+      required:
+        - task_id
+        - team_id
+        - status
+        - created_at
+        - updated_at
+
+    TableColumn:
+      type: object
+      description: 表列信息
+      properties:
+        name:
+          type: string
+          description: 列名
+        data_type:
+          type: string
+          description: 数据类型
+        is_nullable:
+          type: boolean
+          description: 是否可空
+        description:
+          type: string
+          description: 业务含义
+        is_key:
+          type: boolean
+          description: 是否关键字段
+
+    TableInfo:
+      type: object
+      description: 表信息
+      properties:
+        name:
+          type: string
+          description: 表名
+        description:
+          type: string
+          description: 业务含义
+        columns:
+          type: array
+          items:
+            $ref: '#/components/schemas/TableColumn'
+        row_count:
+          type: integer
+          description: 估计行数
+
+    DataDictionary:
+      type: object
+      description: 数据字典
+      properties:
+        tables:
+          type: array
+          items:
+            $ref: '#/components/schemas/TableInfo'
+        relations:
+          type: array
+          items:
+            type: object
+        key_fields:
+          type: array
+          items:
+            type: string
+        summary:
+          type: string
+
+    Insight:
+      type: object
+      description: 业务洞察
+      properties:
+        title:
+          type: string
+          description: 洞察标题
+        description:
+          type: string
+          description: 洞察描述
+        data_support:
+          type: object
+          description: 数据支撑
+        impact:
+          type: string
+          description: 潜在影响
+        confidence:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+          description: 置信度
+
+    Strategy:
+      type: object
+      description: 转化策略
+      properties:
+        name:
+          type: string
+          description: 策略名称
+        target_segment:
+          type: string
+          description: 目标人群
+        trigger_condition:
+          type: string
+          description: 触发条件
+        action:
+          type: string
+          description: 执行动作
+        expected_effect:
+          type: string
+          description: 预期效果
+        risk_assessment:
+          type: string
+          description: 风险评估
+        config:
+          type: object
+          description: 策略配置
+
+    ExecutionResult:
+      type: object
+      description: 执行结果
+      properties:
+        success:
+          type: boolean
+          description: 是否成功
+        output:
+          type: object
+          description: 输出数据
+        logs:
+          type: string
+          description: 执行日志
+        error:
+          type: string
+          nullable: true
+          description: 错误信息
+        duration_ms:
+          type: integer
+          description: 执行时长（毫秒）
+
+    AnalysisResult:
+      type: object
+      description: 完整分析结果
+      properties:
+        task_id:
+          type: string
+          format: uuid
+          description: 任务 ID
+        data_dict:
+          $ref: '#/components/schemas/DataDictionary'
+        analysis_plan:
+          type: object
+          description: 分析计划
+        generated_code:
+          type: string
+          description: 生成的代码
+        execution_result:
+          $ref: '#/components/schemas/ExecutionResult'
+        insights:
+          type: array
+          items:
+            $ref: '#/components/schemas/Insight'
+          description: 业务洞察列表
+        strategies:
+          type: array
+          items:
+            $ref: '#/components/schemas/Strategy'
+          description: 策略列表
+      required:
+        - task_id
+
+    ErrorResponse:
+      type: object
+      description: 错误响应
+      properties:
+        detail:
+          type: string
+          description: 错误详情
+      required:
+        - detail
+
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API Key 认证（可选）
+
+security:
+  - ApiKeyAuth: []
