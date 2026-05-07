@@ -17,7 +17,7 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - LLM_MODEL=${LLM_MODEL:-claude-sonnet-4-20250514}
       - DATABASE_URL=postgresql+asyncpg://insight:insight@postgres:5432/insight_x
-      - SANDBOX_IMAGE=python:3.11-slim
+      - SANDBOX_IMAGE=python:3.13-slim
       - SANDBOX_MEMORY_LIMIT=2g
       - SANDBOX_CPU_QUOTA=100000
       - SANDBOX_TIMEOUT=300
@@ -80,7 +80,7 @@ services:
 
   # Sandbox executor container (pre-pulled for faster execution)
   sandbox-base:
-    image: python:3.11-slim
+    image: python:3.13-slim
     container_name: insight-x-sandbox-base
     command: ["echo", "Sandbox base image ready"]
     networks:

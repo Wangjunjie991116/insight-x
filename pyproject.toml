@@ -3,7 +3,7 @@ name = "insight-x"
 version = "0.1.0"
 description = "AI Agent automated data analysis platform"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.13"
 dependencies = [
     "fastapi>=0.109.0",
     "uvicorn[standard]>=0.27.0",
@@ -39,10 +39,10 @@ testpaths = ["tests"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py311"
+target-version = "py313"
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.13"
 strict = true
 
 [tool.hatch.build.targets.wheel]

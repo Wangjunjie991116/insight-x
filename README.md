@@ -66,7 +66,7 @@ insight-x/
 
 | 类别 | 技术 | 说明 |
 |------|------|------|
-| **语言** | Python 3.11+ | 类型注解、async/await |
+| **语言** | Python 3.13+ | 类型注解、async/await |
 | **Web框架** | FastAPI | 异步 API、自动 OpenAPI 文档 |
 | **Agent框架** | LangChain | LLM 应用开发框架 |
 | **LLM** | Claude / GPT-4 | Anthropic 或 OpenAI API |
@@ -228,7 +228,7 @@ LLM_MODEL=claude-sonnet-4-20250514
 DATABASE_URL=postgresql+asyncpg://user:password@localhost:5432/insight_x
 
 # Docker 沙箱
-SANDBOX_IMAGE=python:3.11-slim
+SANDBOX_IMAGE=python:3.13-slim
 SANDBOX_MEMORY_LIMIT=2g
 SANDBOX_CPU_QUOTA=100000
 SANDBOX_TIMEOUT=300
