@@ -1,6 +1,6 @@
 openapi: 3.1.0
 info:
-  title: Insight-X API
+  title: Insight-X API (洞察)
   description: |
     AI Agent 自动化数据分析平台 API
 
