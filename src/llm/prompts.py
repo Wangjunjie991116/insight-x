@@ -16,7 +16,38 @@ class PromptTemplates:
 3. 表之间的关联关系
 4. 关键业务字段识别
 
-输出格式：JSON"""
+输出格式：纯JSON，不要包含markdown代码块标记，不要包含任何解释文字。
+
+JSON结构如下：
+{
+  "tables": [
+    {
+      "name": "表名",
+      "description": "表的业务含义",
+      "columns": [
+        {
+          "name": "字段名",
+          "data_type": "数据类型",
+          "is_nullable": true/false,
+          "description": "字段的业务含义",
+          "is_key": true/false
+        }
+      ],
+      "row_count": 估计行数
+    }
+  ],
+  "relations": [
+    {
+      "from_table": "源表",
+      "from_column": "源字段",
+      "to_table": "目标表",
+      "to_column": "目标字段",
+      "relation_type": "foreign_key"
+    }
+  ],
+  "key_fields": ["关键业务字段列表"],
+  "summary": "数据整体概述"
+}"""
 
     DATA_UNDERSTANDING_USER = """业务背景：
 {business_doc}
@@ -39,7 +70,15 @@ class PromptTemplates:
 3. 需要做哪些对比分析
 4. 分析步骤顺序
 
-输出格式：JSON"""
+输出格式：纯JSON，不要包含markdown代码块标记，不要包含任何解释文字。
+
+JSON结构如下：
+{
+  "metrics": ["指标1", "指标2"],
+  "statistics": ["统计量1", "统计量2"],
+  "comparisons": ["对比分析1", "对比分析2"],
+  "steps": ["步骤1", "步骤2", "步骤3"]
+}"""
 
     ANALYSIS_STRATEGY_USER = """数据字典：
 {data_dict}

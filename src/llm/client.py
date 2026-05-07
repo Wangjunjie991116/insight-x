@@ -37,11 +37,22 @@ class LLMClient:
                 temperature=0.7,
             )
 
+    def _extract_content(self, content: Any) -> str:
+        """Extract text content from LLM response."""
+        # Handle list response with thinking/text blocks
+        if isinstance(content, list):
+            for item in content:
+                if isinstance(item, dict) and item.get("type") == "text":
+                    return item.get("text", "")
+            # If no text block found, join all text content
+            return " ".join(str(item) for item in content)
+        return str(content)
+
     async def ainvoke(self, prompt: str) -> str:
         """Invoke LLM asynchronously."""
         try:
             response: BaseMessage = await self._model.ainvoke(prompt)
-            return str(response.content)
+            return self._extract_content(response.content)
         except Exception as e:
             raise RuntimeError(f"LLM async invocation failed: {e}") from e
 
@@ -55,7 +66,7 @@ class LLMClient:
         ]
         try:
             response = await self._model.ainvoke(messages)
-            return str(response.content)
+            return self._extract_content(response.content)
         except Exception as e:
             raise RuntimeError(f"LLM async invocation with system prompt failed: {e}") from e
 
@@ -63,7 +74,7 @@ class LLMClient:
         """Invoke LLM synchronously."""
         try:
             response: BaseMessage = self._model.invoke(prompt)
-            return str(response.content)
+            return self._extract_content(response.content)
         except Exception as e:
             raise RuntimeError(f"LLM sync invocation failed: {e}") from e
 

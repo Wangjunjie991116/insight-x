@@ -36,11 +36,34 @@ class DataUnderstandingAgent(BaseAgent[DatabaseConfig, DataDictionary]):
     def _parse_response(self, response: str) -> DataDictionary:
         """Parse LLM response to DataDictionary."""
         try:
+            # Handle response that might be a list with thinking/text blocks
+            if response.startswith("["):
+                # Try to parse as list and extract text content
+                try:
+                    items = json.loads(response)
+                    for item in items:
+                        if isinstance(item, dict) and item.get("type") == "text":
+                            response = item.get("text", "")
+                            break
+                except json.JSONDecodeError:
+                    pass
+
+            # Clean response - remove markdown code blocks if present
+            cleaned = response.strip()
+            if cleaned.startswith("```"):
+                # Remove opening ```json or ```
+                first_newline = cleaned.find("\n")
+                if first_newline != -1:
+                    cleaned = cleaned[first_newline + 1 :]
+                # Remove closing ```
+                if cleaned.endswith("```"):
+                    cleaned = cleaned[:-3].strip()
+
             # Try to extract JSON from response
-            json_start = response.find("{")
-            json_end = response.rfind("}") + 1
+            json_start = cleaned.find("{")
+            json_end = cleaned.rfind("}") + 1
             if json_start >= 0 and json_end > json_start:
-                json_str = response[json_start:json_end]
+                json_str = cleaned[json_start:json_end]
                 data = json.loads(json_str)
                 return DataDictionary(**data)
         except (json.JSONDecodeError, ValueError, TypeError, KeyError) as e:

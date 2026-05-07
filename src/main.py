@@ -74,16 +74,21 @@ app.add_middleware(
 class DatabaseConfigRequest(BaseModel):
     """Database configuration request."""
 
-    host: str = Field(..., description="Database host", example="localhost")
+    host: str = Field(default="", description="Database host", example="localhost")
     port: int = Field(default=5432, description="Database port", example=5432)
-    database: str = Field(..., description="Database name", example="mydb")
-    user: str = Field(..., description="Database user", example="postgres")
-    password: str = Field(..., description="Database password", example="secret")
+    database: str = Field(..., description="Database name or path for SQLite", example="mydb")
+    user: str = Field(default="", description="Database user", example="postgres")
+    password: str = Field(default="", description="Database password", example="secret")
     schema_: str = Field(
         default="public",
         alias="schema",
         description="Database schema",
         example="public",
+    )
+    db_type: str = Field(
+        default="postgresql",
+        description="Database type: postgresql or sqlite",
+        example="sqlite",
     )
 
 
@@ -178,6 +183,7 @@ async def create_task(request: CreateTaskRequest) -> TaskResponse:
         user=request.db_config.user,
         password=request.db_config.password,
         schema_=request.db_config.schema_,
+        db_type=request.db_config.db_type,
     )
 
     # Create task

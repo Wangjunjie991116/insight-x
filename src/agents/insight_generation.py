@@ -52,10 +52,35 @@ class InsightGenerationAgent(BaseAgent[InsightGenerationInput, list[Insight]]):
     def _parse_response(self, response: str) -> list[Insight]:
         """Parse LLM response to list of insights."""
         try:
-            json_start = response.find("[")
-            json_end = response.rfind("]") + 1
+            # Handle response that might be a list with thinking/text blocks
+            if response.startswith("["):
+                try:
+                    items = json.loads(response)
+                    # Check if it's a list of thinking/text blocks
+                    if items and isinstance(items[0], dict) and "type" in items[0]:
+                        for item in items:
+                            if item.get("type") == "text":
+                                response = item.get("text", "")
+                                break
+                    else:
+                        # It's already a list of insights
+                        return [Insight(**item) for item in items if isinstance(item, dict)]
+                except json.JSONDecodeError:
+                    pass
+
+            # Clean response - remove markdown code blocks if present
+            cleaned = response.strip()
+            if cleaned.startswith("```"):
+                first_newline = cleaned.find("\n")
+                if first_newline != -1:
+                    cleaned = cleaned[first_newline + 1 :]
+                if cleaned.endswith("```"):
+                    cleaned = cleaned[:-3].strip()
+
+            json_start = cleaned.find("[")
+            json_end = cleaned.rfind("]") + 1
             if json_start >= 0 and json_end > json_start:
-                json_str = response[json_start:json_end]
+                json_str = cleaned[json_start:json_end]
                 data = json.loads(json_str)
                 return [Insight(**item) for item in data]
         except (json.JSONDecodeError, ValueError, TypeError, KeyError) as e:

@@ -52,6 +52,17 @@ class CodeGenerationAgent(BaseAgent[CodeGenerationInput, str]):
 
     def _parse_response(self, response: str) -> str:
         """Parse LLM response to extract Python code."""
+        # Handle response that might be a list with thinking/text blocks
+        if response.startswith("["):
+            try:
+                items = json.loads(response)
+                for item in items:
+                    if isinstance(item, dict) and item.get("type") == "text":
+                        response = item.get("text", "")
+                        break
+            except json.JSONDecodeError:
+                pass
+
         # Try to extract code from markdown code blocks
         code_block_start = response.find("```python")
         if code_block_start == -1:
@@ -65,8 +76,6 @@ class CodeGenerationAgent(BaseAgent[CodeGenerationInput, str]):
                 code_start = code_block_start + 3
                 if response[code_start:code_start + 6] == "python":
                     code_start += 6
-                elif response[code_start:code_start + 1] == "\n":
-                    code_start += 1
 
                 code = response[code_start:code_block_end].strip()
                 return code

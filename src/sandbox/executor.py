@@ -1,17 +1,24 @@
 """Docker-based sandbox executor for safe code execution."""
 
 import json
+import subprocess
 import tempfile
 import time
 from pathlib import Path
 from typing import Any
 
-import docker
-from docker.errors import DockerException
-from docker.models.containers import Container
-
 from src.config import get_settings
 from src.models.result import ExecutionResult
+
+# Optional Docker import
+try:
+    import docker
+    from docker.errors import DockerException
+    from docker.models.containers import Container
+
+    DOCKER_AVAILABLE = True
+except ImportError:
+    DOCKER_AVAILABLE = False
 
 
 class SandboxResult:
@@ -43,15 +50,20 @@ class SandboxResult:
 
 
 class SandboxExecutor:
-    """Execute Python code in Docker sandbox."""
+    """Execute Python code in Docker sandbox or local environment."""
 
     def __init__(self) -> None:
         """Initialize sandbox executor."""
         self._settings = get_settings()
-        try:
-            self._client = docker.from_env()
-        except DockerException as e:
-            raise RuntimeError(f"Failed to connect to Docker: {e}") from e
+        self._client = None
+
+        if self._settings.sandbox_mode == "docker":
+            if not DOCKER_AVAILABLE:
+                raise RuntimeError("Docker mode requested but docker package not installed")
+            try:
+                self._client = docker.from_env()
+            except DockerException as e:
+                raise RuntimeError(f"Failed to connect to Docker: {e}") from e
 
     def execute(
         self,
@@ -60,28 +72,100 @@ class SandboxExecutor:
         timeout: int | None = None,
     ) -> SandboxResult:
         """Execute Python code in sandbox."""
-        start_time = time.time()
-        container = None
+        if self._settings.sandbox_mode == "local" or self._client is None:
+            return self._execute_local(code, db_config, timeout)
+        return self._execute_docker(code, db_config, timeout)
 
-        # Create temporary directory for code
+    def _execute_local(
+        self,
+        code: str,
+        db_config: dict[str, Any] | None = None,
+        timeout: int | None = None,
+    ) -> SandboxResult:
+        """Execute code locally (less secure, for development)."""
+        start_time = time.time()
+
         with tempfile.TemporaryDirectory() as tmpdir:
             code_file = Path(tmpdir) / "analysis.py"
             output_file = Path(tmpdir) / "output.json"
 
-            # Prepare code with output capture
+            full_code = self._prepare_code(code, db_config, output_file)
+            code_file.write_text(full_code)
+
+            try:
+                import sys
+
+                result = subprocess.run(
+                    [sys.executable, str(code_file)],
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout or self._settings.sandbox_timeout,
+                    cwd=tmpdir,
+                )
+
+                duration_ms = int((time.time() - start_time) * 1000)
+                logs = result.stdout + result.stderr
+
+                # Read output
+                output = self._read_output(output_file)
+
+                if result.returncode != 0:
+                    return SandboxResult(
+                        success=False,
+                        output=output,
+                        logs=logs,
+                        error=f"Execution failed with exit code {result.returncode}",
+                        duration_ms=duration_ms,
+                    )
+
+                return SandboxResult(
+                    success=True,
+                    output=output,
+                    logs=logs,
+                    duration_ms=duration_ms,
+                )
+
+            except subprocess.TimeoutExpired:
+                duration_ms = int((time.time() - start_time) * 1000)
+                return SandboxResult(
+                    success=False,
+                    output={},
+                    logs="",
+                    error="Execution timed out",
+                    duration_ms=duration_ms,
+                )
+            except Exception as e:
+                duration_ms = int((time.time() - start_time) * 1000)
+                return SandboxResult(
+                    success=False,
+                    output={},
+                    logs="",
+                    error=str(e),
+                    duration_ms=duration_ms,
+                )
+
+    def _execute_docker(
+        self,
+        code: str,
+        db_config: dict[str, Any] | None = None,
+        timeout: int | None = None,
+    ) -> SandboxResult:
+        """Execute code in Docker sandbox."""
+        start_time = time.time()
+        container = None
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            code_file = Path(tmpdir) / "analysis.py"
+            output_file = Path(tmpdir) / "output.json"
+
             full_code = self._prepare_code(code, db_config)
             code_file.write_text(full_code)
 
             try:
                 container = self._run_container(code_file, timeout)
-
-                # Wait for container and check exit code
                 result = container.wait(timeout=self._settings.sandbox_timeout)
                 exit_code = result.get("StatusCode", 0)
-
                 logs = container.logs().decode("utf-8")
-
-                # Get output
                 output = self._get_output(output_file)
 
                 duration_ms = int((time.time() - start_time) * 1000)
@@ -118,9 +202,12 @@ class SandboxExecutor:
                     except Exception:
                         pass
 
-    def _prepare_code(self, code: str, db_config: dict[str, Any] | None) -> str:
+    def _prepare_code(
+        self, code: str, db_config: dict[str, Any] | None, output_file: Path | None = None
+    ) -> str:
         """Prepare code with output capture."""
         db_config_json = json.dumps(db_config) if db_config else "{}"
+        output_path = str(output_file) if output_file else "/tmp/output.json"
 
         return f'''
 import json
@@ -138,14 +225,14 @@ try:
         output = result
     else:
         output = {{"status": "completed"}}
-    with open("/tmp/output.json", "w") as f:
+    with open("{output_path}", "w") as f:
         json.dump(output, f, default=str)
 except Exception as e:
-    with open("/tmp/output.json", "w") as f:
+    with open("{output_path}", "w") as f:
         json.dump({{"error": str(e)}}, f)
 '''
 
-    def _run_container(self, code_file: Path, timeout: int | None) -> Container:
+    def _run_container(self, code_file: Path, timeout: int | None) -> "Container":
         """Run Docker container with security hardening."""
         timeout = timeout or self._settings.sandbox_timeout
 
@@ -169,6 +256,20 @@ except Exception as e:
 
     def _get_output(self, output_file: Path) -> dict[str, Any]:
         """Get output from container."""
+        if output_file.exists():
+            try:
+                content = output_file.read_text()
+                if content.strip():
+                    return json.loads(content)
+            except json.JSONDecodeError as e:
+                return {"error": f"JSON decode error: {e}", "raw_output": content}
+            except Exception as e:
+                return {"error": f"Failed to read output: {e}"}
+
+        return {"status": "no_output"}
+
+    def _read_output(self, output_file: Path) -> dict[str, Any]:
+        """Read output from local execution."""
         if output_file.exists():
             try:
                 content = output_file.read_text()

@@ -29,10 +29,11 @@ class Settings(BaseSettings):
     database_url: str = "sqlite+aiosqlite:///./insight_x.db"
 
     # Docker Sandbox
-    sandbox_image: str = "python:3.11-slim"
+    sandbox_image: str = "python:3.13-slim"
     sandbox_memory_limit: str = "2g"
     sandbox_cpu_quota: int = 100000  # 1 CPU
     sandbox_timeout: int = 300  # 5 minutes
+    sandbox_mode: str = "docker"  # "docker" or "local"
 
     # Redis (optional, for task queue)
     redis_url: str = ""

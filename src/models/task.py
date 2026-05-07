@@ -19,16 +19,19 @@ class TaskStatus(str, Enum):
 class DatabaseConfig(BaseModel):
     """Database connection configuration."""
 
-    host: str = Field(..., description="Database host")
+    host: str = Field(default="", description="Database host")
     port: int = Field(default=5432, description="Database port")
-    database: str = Field(..., description="Database name")
-    user: str = Field(..., description="Database user")
-    password: str = Field(..., description="Database password")
+    database: str = Field(..., description="Database name or path for SQLite")
+    user: str = Field(default="", description="Database user")
+    password: str = Field(default="", description="Database password")
     schema_: str = Field(default="public", alias="schema", description="Database schema")
+    db_type: str = Field(default="postgresql", description="Database type: postgresql or sqlite")
 
     @property
     def connection_url(self) -> str:
-        """Build PostgreSQL connection URL."""
+        """Build connection URL based on db_type."""
+        if self.db_type == "sqlite":
+            return f"sqlite+aiosqlite:///{self.database}"
         return f"postgresql://{self.user}:{self.password}@{self.host}:{self.port}/{self.database}"
 
 

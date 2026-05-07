@@ -15,16 +15,17 @@ class DatabaseConnector:
     def __init__(self, config: DatabaseConfig) -> None:
         """Initialize database connector."""
         self._config = config
-        # Convert postgresql:// to postgresql+asyncpg:// for async support
+        self._is_sqlite = config.db_type == "sqlite"
         connection_url = config.connection_url
         if connection_url.startswith("postgresql://"):
             connection_url = connection_url.replace("postgresql://", "postgresql+asyncpg://", 1)
-        self._engine = create_async_engine(
-            connection_url,
-            echo=False,
-            pool_size=5,
-            max_overflow=10,
-        )
+
+        engine_kwargs: dict[str, Any] = {"echo": False}
+        if not self._is_sqlite:
+            engine_kwargs["pool_size"] = 5
+            engine_kwargs["max_overflow"] = 10
+
+        self._engine = create_async_engine(connection_url, **engine_kwargs)
         self._session_factory = async_sessionmaker(
             self._engine,
             class_=AsyncSession,
@@ -33,6 +34,9 @@ class DatabaseConnector:
 
     async def get_schema_info(self) -> list[dict[str, Any]]:
         """Get database schema information."""
+        if self._is_sqlite:
+            return await self._get_sqlite_schema_info()
+
         query = text("""
             SELECT
                 table_name,
@@ -51,8 +55,37 @@ class DatabaseConnector:
         except Exception as e:
             raise RuntimeError(f"Failed to get schema info: {e}") from e
 
+    async def _get_sqlite_schema_info(self) -> list[dict[str, Any]]:
+        """Get schema info for SQLite."""
+        try:
+            async with self._session_factory() as session:
+                tables_result = await session.execute(
+                    text("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
+                )
+                table_names = [row[0] for row in tables_result.fetchall()]
+
+                columns = []
+                for table_name in table_names:
+                    pragma_result = await session.execute(
+                        text(f"PRAGMA table_info('{table_name}')")
+                    )
+                    for row in pragma_result.fetchall():
+                        mapping = row._mapping
+                        columns.append({
+                            "table_name": table_name,
+                            "column_name": mapping["name"],
+                            "data_type": mapping["type"],
+                            "is_nullable": "NO" if mapping["notnull"] else "YES",
+                        })
+                return columns
+        except Exception as e:
+            raise RuntimeError(f"Failed to get SQLite schema info: {e}") from e
+
     async def get_table_names(self) -> list[str]:
         """Get list of table names."""
+        if self._is_sqlite:
+            return await self._get_sqlite_table_names()
+
         query = text("""
             SELECT table_name
             FROM information_schema.tables
@@ -66,6 +99,17 @@ class DatabaseConnector:
                 return [row[0] for row in result.fetchall()]
         except Exception as e:
             raise RuntimeError(f"Failed to get table names: {e}") from e
+
+    async def _get_sqlite_table_names(self) -> list[str]:
+        """Get table names for SQLite."""
+        try:
+            async with self._session_factory() as session:
+                result = await session.execute(
+                    text("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
+                )
+                return [row[0] for row in result.fetchall()]
+        except Exception as e:
+            raise RuntimeError(f"Failed to get SQLite table names: {e}") from e
 
     async def get_sample_data(self, table_name: str, limit: int = 100) -> list[dict[str, Any]]:
         """Get sample data from a table."""
