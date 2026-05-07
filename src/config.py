@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     # LLM Configuration
     llm_provider: str = "anthropic"  # "anthropic" or "openai"
     anthropic_api_key: str = ""
+    anthropic_base_url: str = ""  # Optional, for custom API endpoint
     openai_api_key: str = ""
     llm_model: str = "claude-sonnet-4-20250514"  # or "gpt-4o"
 

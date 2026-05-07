@@ -205,9 +205,6 @@ insight-x/
 ### 1. 环境准备
 
 ```bash
-# 克隆项目
-cd /Users/didi/Documents/project/private/insight-x
-
 # 创建虚拟环境
 python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate

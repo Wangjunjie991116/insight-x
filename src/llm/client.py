@@ -22,11 +22,14 @@ class LLMClient:
         settings = get_settings()
 
         if settings.llm_provider == "anthropic":
-            return ChatAnthropic(
-                model=settings.llm_model,
-                api_key=settings.anthropic_api_key,
-                temperature=0.7,
-            )
+            kwargs: dict[str, Any] = {
+                "model": settings.llm_model,
+                "api_key": settings.anthropic_api_key,
+                "temperature": 0.7,
+            }
+            if settings.anthropic_base_url:
+                kwargs["anthropic_api_url"] = settings.anthropic_base_url
+            return ChatAnthropic(**kwargs)
         else:
             return ChatOpenAI(
                 model=settings.llm_model,
