@@ -74,7 +74,8 @@ class AnalysisStrategyAgent(BaseAgent[AnalysisStrategyInput, dict[str, Any]]):
             json_end = cleaned.rfind("}") + 1
             if json_start >= 0 and json_end > json_start:
                 json_str = cleaned[json_start:json_end]
-                return json.loads(json_str)
+                data: dict[str, Any] = json.loads(json_str)
+                return data
         except (json.JSONDecodeError, ValueError, TypeError, KeyError):
             pass
         return {

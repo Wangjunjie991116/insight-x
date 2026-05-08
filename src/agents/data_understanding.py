@@ -5,7 +5,6 @@ from typing import Any
 
 from src.agents.base import BaseAgent
 from src.db.connector import DatabaseConnector
-from src.llm.client import LLMClient
 from src.llm.prompts import PromptTemplates
 from src.models.result import DataDictionary
 from src.models.task import DatabaseConfig

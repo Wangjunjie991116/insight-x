@@ -6,6 +6,7 @@ from langchain_anthropic import ChatAnthropic
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import BaseMessage
 from langchain_openai import ChatOpenAI
+from pydantic import SecretStr
 
 from src.config import get_settings
 
@@ -33,7 +34,7 @@ class LLMClient:
         else:
             return ChatOpenAI(
                 model=settings.llm_model,
-                api_key=settings.openai_api_key,
+                api_key=SecretStr(settings.openai_api_key) if settings.openai_api_key else None,
                 temperature=0.7,
             )
 
@@ -43,7 +44,8 @@ class LLMClient:
         if isinstance(content, list):
             for item in content:
                 if isinstance(item, dict) and item.get("type") == "text":
-                    return item.get("text", "")
+                    text = item.get("text", "")
+                    return str(text) if text else ""
             # If no text block found, join all text content
             return " ".join(str(item) for item in content)
         return str(content)

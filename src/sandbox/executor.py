@@ -235,10 +235,11 @@ except Exception as e:
     def _run_container(self, code_file: Path, timeout: int | None) -> "Container":
         """Run Docker container with security hardening."""
         timeout = timeout or self._settings.sandbox_timeout
-
+        if self._client is None:
+            raise RuntimeError("Docker client not initialized")
         return self._client.containers.run(
             self._settings.sandbox_image,
-            command=f"python /tmp/analysis.py",
+            command="python /tmp/analysis.py",
             volumes={
                 str(code_file): {"bind": "/tmp/analysis.py", "mode": "ro"},
             },
@@ -260,7 +261,8 @@ except Exception as e:
             try:
                 content = output_file.read_text()
                 if content.strip():
-                    return json.loads(content)
+                    data: dict[str, Any] = json.loads(content)
+                    return data
             except json.JSONDecodeError as e:
                 return {"error": f"JSON decode error: {e}", "raw_output": content}
             except Exception as e:
@@ -274,7 +276,8 @@ except Exception as e:
             try:
                 content = output_file.read_text()
                 if content.strip():
-                    return json.loads(content)
+                    data: dict[str, Any] = json.loads(content)
+                    return data
             except json.JSONDecodeError as e:
                 return {"error": f"JSON decode error: {e}", "raw_output": content}
             except Exception as e:

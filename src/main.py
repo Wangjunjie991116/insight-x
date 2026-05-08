@@ -21,7 +21,7 @@ _result_store: dict[str, AnalysisResult] = {}
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> Any:
     """Application lifespan handler."""
     # Startup
     settings = get_settings()
@@ -74,38 +74,38 @@ app.add_middleware(
 class DatabaseConfigRequest(BaseModel):
     """Database configuration request."""
 
-    host: str = Field(default="", description="Database host", example="localhost")
-    port: int = Field(default=5432, description="Database port", example=5432)
-    database: str = Field(..., description="Database name or path for SQLite", example="mydb")
-    user: str = Field(default="", description="Database user", example="postgres")
-    password: str = Field(default="", description="Database password", example="secret")
+    host: str = Field(default="", description="Database host", examples=["localhost"])
+    port: int = Field(default=5432, description="Database port", examples=[5432])
+    database: str = Field(..., description="Database name or path for SQLite", examples=["mydb"])
+    user: str = Field(default="", description="Database user", examples=["postgres"])
+    password: str = Field(default="", description="Database password", examples=["secret"])
     schema_: str = Field(
         default="public",
         alias="schema",
         description="Database schema",
-        example="public",
+        examples=["public"],
     )
     db_type: str = Field(
         default="postgresql",
         description="Database type: postgresql or sqlite",
-        example="sqlite",
+        examples=["sqlite"],
     )
 
 
 class CreateTaskRequest(BaseModel):
     """Request to create a new analysis task."""
 
-    team_id: str = Field(..., description="Team identifier", example="team-001")
+    team_id: str = Field(..., description="Team identifier", examples=["team-001"])
     db_config: DatabaseConfigRequest = Field(..., description="Database configuration")
     business_doc: str = Field(
         ...,
         description="Business context documentation",
-        example="E-commerce platform analyzing user conversion funnel",
+        examples=["E-commerce platform analyzing user conversion funnel"],
     )
     business_goal: str = Field(
         ...,
         description="Analysis goal",
-        example="Understand why users drop off at checkout and suggest improvements",
+        examples=["Understand why users drop off at checkout and suggest improvements"],
     )
     metadata: dict[str, Any] = Field(
         default_factory=dict,
@@ -182,7 +182,7 @@ async def create_task(request: CreateTaskRequest) -> TaskResponse:
         database=request.db_config.database,
         user=request.db_config.user,
         password=request.db_config.password,
-        schema_=request.db_config.schema_,
+        schema=request.db_config.schema_,
         db_type=request.db_config.db_type,
     )
 
