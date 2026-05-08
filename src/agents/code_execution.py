@@ -1,4 +1,4 @@
-"""Code Execution Agent - executes Python code in sandbox."""
+"""代码执行 Agent：在线程池中调用 SandboxExecutor，避免阻塞事件循环。"""
 
 from typing import Any
 
@@ -22,10 +22,10 @@ class CodeExecutionInput:
 
 
 class CodeExecutionAgent(BaseAgent[CodeExecutionInput, ExecutionResult]):
-    """Agent that executes Python code in Docker sandbox."""
+    """流水线第四步：同步沙箱封装为 async 接口；异常时降级为失败 ExecutionResult。"""
 
     def __init__(self) -> None:
-        """Initialize with sandbox executor."""
+        """显式传入 llm_client=None：本 Agent 不调用语言模型。"""
         super().__init__(llm_client=None)
         self._sandbox = SandboxExecutor()
 
@@ -38,10 +38,10 @@ class CodeExecutionAgent(BaseAgent[CodeExecutionInput, ExecutionResult]):
         return "Executes Python code in a secure Docker sandbox"
 
     async def execute(self, input_data: CodeExecutionInput) -> ExecutionResult:
-        """Execute code in sandbox."""
+        """run_in_executor 包装同步沙箱；失败返回结构化错误而非抛到编排器。"""
         self._log_execution("Executing code in sandbox...")
         try:
-            # Run sandbox execution (it's synchronous, so we wrap it)
+            # 沙箱为阻塞 IO/子进程，默认线程池卸载以防卡住 asyncio
             import asyncio
 
             loop = asyncio.get_event_loop()

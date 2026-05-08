@@ -1,4 +1,4 @@
-"""Code Generation Agent - generates Python code for data analysis."""
+"""代码生成 Agent：根据数据字典、策略与 DB 连接信息生成可执行 Python 源码。"""
 
 import json
 from typing import Any
@@ -23,7 +23,7 @@ class CodeGenerationInput:
 
 
 class CodeGenerationAgent(BaseAgent[CodeGenerationInput, str]):
-    """Agent that generates Python code for data analysis."""
+    """流水线第三步：输出单一字符串源码，供沙箱装载运行。"""
 
     @property
     def name(self) -> str:
@@ -34,7 +34,7 @@ class CodeGenerationAgent(BaseAgent[CodeGenerationInput, str]):
         return "Generates executable Python code for data analysis"
 
     async def execute(self, input_data: CodeGenerationInput) -> str:
-        """Execute code generation."""
+        """提示词内嵌 JSON 化的策略与连接配置，模型返回 markdown 代码块或裸代码。"""
         self._log_execution("Generating analysis code...")
         try:
             system_prompt, user_prompt = PromptTemplates.format_code_generation(
@@ -51,8 +51,7 @@ class CodeGenerationAgent(BaseAgent[CodeGenerationInput, str]):
             raise
 
     def _parse_response(self, response: str) -> str:
-        """Parse LLM response to extract Python code."""
-        # Handle response that might be a list with thinking/text blocks
+        """优先截取 ```python 围栏；否则退回全文，兼容模型直接输出源码。"""
         if response.startswith("["):
             try:
                 items = json.loads(response)
@@ -63,16 +62,16 @@ class CodeGenerationAgent(BaseAgent[CodeGenerationInput, str]):
             except json.JSONDecodeError:
                 pass
 
-        # Try to extract code from markdown code blocks
+        # 尝试从 markdown 围栏抽取 python 代码块
         code_block_start = response.find("```python")
         if code_block_start == -1:
             code_block_start = response.find("```")
 
         if code_block_start != -1:
-            # Find the end of the code block
+            # 定位闭合围栏并跳过可选的语言标记
             code_block_end = response.find("```", code_block_start + 3)
             if code_block_end != -1:
-                # Extract the code, skipping the language identifier if present
+                # code_start 跳过 ``` 后的 "python" 字样
                 code_start = code_block_start + 3
                 if response[code_start:code_start + 6] == "python":
                     code_start += 6
@@ -80,6 +79,5 @@ class CodeGenerationAgent(BaseAgent[CodeGenerationInput, str]):
                 code = response[code_start:code_block_end].strip()
                 return code
 
-        # If no code block found, return the entire response as code
-        # This handles cases where the LLM returns raw Python code
+        # 无围栏时视为裸 Python，避免生成步骤反复失败
         return response.strip()

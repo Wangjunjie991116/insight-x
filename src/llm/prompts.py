@@ -1,10 +1,10 @@
-"""Prompt templates for all agents."""
+"""集中定义各 Agent 的系统提示与用户提示模板（正文多为中文）。"""
 
 from src.models.result import DataDictionary
 
 
 class PromptTemplates:
-    """Centralized prompt templates."""
+    """静态格式化方法：把数据字典、策略等序列化片段填入模板占位符。"""
 
     # Agent 1: Data Understanding
     DATA_UNDERSTANDING_SYSTEM = """你是一个数据分析专家，擅长理解数据库结构和业务语义。

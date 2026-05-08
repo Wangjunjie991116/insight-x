@@ -1,4 +1,4 @@
-"""Result model definitions."""
+"""分析流水线各阶段的结构化结果模型（数据字典、执行结果、洞察等）。"""
 
 from typing import Any, Optional
 
@@ -76,7 +76,7 @@ class Strategy(BaseModel):
 
 
 class AnalysisResult(BaseModel):
-    """Complete analysis result."""
+    """单次任务端到端产物聚合：编排器逐步填充各字段。"""
 
     task_id: str = Field(..., description="Task identifier")
     data_dict: Optional[DataDictionary] = Field(default=None, description="Data dictionary")

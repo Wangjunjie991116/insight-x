@@ -1,4 +1,4 @@
-"""FastAPI application entry point for Insight-X."""
+"""Insight-X HTTP API：任务创建、触发五步分析与结果查询（任务与结果当前为内存存储）。"""
 
 import uuid
 from contextlib import asynccontextmanager
@@ -15,22 +15,22 @@ from src.models.task import AnalysisTask, DatabaseConfig, TaskStatus
 from src.orchestrator import run_full_analysis
 
 
-# In-memory task storage (replace with database in production)
+# MVP：进程内字典存放任务与分析结果，重启即丢失；生产环境需替换为持久化存储
 _task_store: dict[str, AnalysisTask] = {}
 _result_store: dict[str, AnalysisResult] = {}
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> Any:
-    """Application lifespan handler."""
-    # Startup
+    """应用生命周期：启动时打印关键配置，关闭时清理钩子占位。"""
+    # 启动阶段：便于本地确认 LLM 提供方与模型是否读到环境变量
     settings = get_settings()
     print(f"Starting {settings.app_name}...")
     print(f"Debug mode: {settings.debug}")
     print(f"LLM Provider: {settings.llm_provider}")
     print(f"LLM Model: {settings.llm_model}")
     yield
-    # Shutdown
+    # 关闭阶段：此处可扩展为关闭连接池等
     print("Shutting down...")
 
 
@@ -158,7 +158,7 @@ class HealthResponse(BaseModel):
 # API Endpoints
 @app.get("/health", response_model=HealthResponse, tags=["Health"])
 async def health_check() -> HealthResponse:
-    """Health check endpoint."""
+    """负载均衡/探活：不访问数据库与 LLM。"""
     return HealthResponse(
         status="healthy",
         version="0.1.0",
@@ -168,14 +168,10 @@ async def health_check() -> HealthResponse:
 
 @app.post("/api/v1/tasks", response_model=TaskResponse, tags=["Tasks"])
 async def create_task(request: CreateTaskRequest) -> TaskResponse:
-    """Create a new analysis task.
-
-    Creates a task with database configuration and analysis goals.
-    The task will be in PENDING status until analysis is run.
-    """
+    """创建分析任务：写入内存仓库，状态为 PENDING，直至调用 run。"""
     task_id = str(uuid.uuid4())
 
-    # Create database config
+    # 将请求体中的数据库字段映射为领域模型 DatabaseConfig
     db_config = DatabaseConfig(
         host=request.db_config.host,
         port=request.db_config.port,
@@ -186,7 +182,7 @@ async def create_task(request: CreateTaskRequest) -> TaskResponse:
         db_type=request.db_config.db_type,
     )
 
-    # Create task
+    # 组装任务并写入内存索引
     task = AnalysisTask(
         task_id=task_id,
         team_id=request.team_id,
@@ -208,7 +204,7 @@ async def create_task(request: CreateTaskRequest) -> TaskResponse:
 
 @app.get("/api/v1/tasks/{task_id}", response_model=TaskStatusResponse, tags=["Tasks"])
 async def get_task_status(task_id: str) -> TaskStatusResponse:
-    """Get task status by ID."""
+    """按 task_id 查询当前状态与时间戳。"""
     task = _task_store.get(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -225,14 +221,10 @@ async def get_task_status(task_id: str) -> TaskStatusResponse:
 
 @app.post("/api/v1/tasks/{task_id}/run", response_model=AnalysisResultResponse, tags=["Analysis"])
 async def run_analysis(task_id: str) -> AnalysisResultResponse:
-    """Run analysis for a task.
+    """触发完整五步流水线；并发防护：同一任务 RUNNING 时返回 400。
 
-    Executes the full analysis pipeline:
-    1. Data Understanding - Analyzes database structure
-    2. Strategy Design - Creates analysis strategy
-    3. Code Generation - Generates Python analysis code
-    4. Code Execution - Runs code in sandbox
-    5. Insight Generation - Extracts business insights
+    成功则将 AnalysisResult 落入 `_result_store` 并将任务标为 COMPLETED；
+    异常则标 FAILED，并在响应体中带 error 文本。
     """
     task = _task_store.get(task_id)
     if not task:
@@ -241,15 +233,14 @@ async def run_analysis(task_id: str) -> AnalysisResultResponse:
     if task.status == TaskStatus.RUNNING:
         raise HTTPException(status_code=400, detail="Task is already running")
 
-    # Mark task as running
+    # 标记运行中，防止重复触发长时间流水线
     task.mark_running()
     _task_store[task_id] = task
 
     try:
-        # Run full analysis
         result = await run_full_analysis(task)
 
-        # Store result and mark completed
+        # 持久化（内存）分析产物并翻转任务状态
         _result_store[task_id] = result
         task.mark_completed()
         _task_store[task_id] = task
@@ -277,7 +268,7 @@ async def run_analysis(task_id: str) -> AnalysisResultResponse:
 
 @app.get("/api/v1/tasks/{task_id}/result", response_model=AnalysisResultResponse, tags=["Analysis"])
 async def get_analysis_result(task_id: str) -> AnalysisResultResponse:
-    """Get analysis result for a completed task."""
+    """读取已完成任务的分析产物；PENDING/RUNNING 分别返回 400。"""
     task = _task_store.get(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -306,7 +297,7 @@ async def get_analysis_result(task_id: str) -> AnalysisResultResponse:
 
 @app.get("/api/v1/tasks", response_model=list[TaskStatusResponse], tags=["Tasks"])
 async def list_tasks(team_id: str | None = None, limit: int = 100) -> list[TaskStatusResponse]:
-    """List all tasks, optionally filtered by team."""
+    """列出内存中的任务摘要，可按 team_id 过滤并限制条数。"""
     tasks = list(_task_store.values())
 
     if team_id:
@@ -330,7 +321,7 @@ async def list_tasks(team_id: str | None = None, limit: int = 100) -> list[TaskS
 # Root endpoint
 @app.get("/", tags=["Root"])
 async def root() -> dict[str, str]:
-    """Root endpoint with API information."""
+    """网关首页提示文档与健康检查路径。"""
     return {
         "name": "Insight-X API",
         "version": "0.1.0",

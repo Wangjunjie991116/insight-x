@@ -1,4 +1,4 @@
-"""Docker-based sandbox executor for safe code execution."""
+"""Docker 或本地子进程沙箱：包裹用户生成代码、捕获 JSON 输出并映射为 ExecutionResult。"""
 
 import json
 import subprocess
@@ -22,7 +22,7 @@ except ImportError:
 
 
 class SandboxResult:
-    """Result of sandbox execution."""
+    """沙箱执行的原始产物：成功标志、解析后的 output dict、合并日志与耗时。"""
 
     def __init__(
         self,
@@ -39,7 +39,7 @@ class SandboxResult:
         self.duration_ms = duration_ms
 
     def to_execution_result(self) -> ExecutionResult:
-        """Convert to ExecutionResult model."""
+        """转换为 API / Agent 层使用的 Pydantic 模型。"""
         return ExecutionResult(
             success=self.success,
             output=self.output,
@@ -50,10 +50,10 @@ class SandboxResult:
 
 
 class SandboxExecutor:
-    """Execute Python code in Docker sandbox or local environment."""
+    """根据 sandbox_mode 在 Docker（加固参数）或本机子进程中执行 analysis.py。"""
 
     def __init__(self) -> None:
-        """Initialize sandbox executor."""
+        """docker 模式下懒连接 Docker daemon；失败直接抛错以便尽早暴露环境缺失。"""
         self._settings = get_settings()
         self._client = None
 
@@ -71,7 +71,7 @@ class SandboxExecutor:
         db_config: dict[str, Any] | None = None,
         timeout: int | None = None,
     ) -> SandboxResult:
-        """Execute Python code in sandbox."""
+        """对外唯一入口：自动分流本地 / Docker。"""
         if self._settings.sandbox_mode == "local" or self._client is None:
             return self._execute_local(code, db_config, timeout)
         return self._execute_docker(code, db_config, timeout)
@@ -82,7 +82,7 @@ class SandboxExecutor:
         db_config: dict[str, Any] | None = None,
         timeout: int | None = None,
     ) -> SandboxResult:
-        """Execute code locally (less secure, for development)."""
+        """开发便利路径：与当前 Python 解释器同进程树，安全性低于 Docker。"""
         start_time = time.time()
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -106,7 +106,7 @@ class SandboxExecutor:
                 duration_ms = int((time.time() - start_time) * 1000)
                 logs = result.stdout + result.stderr
 
-                # Read output
+                # 子进程 stdout/stderr 合并记入日志；结构化结果来自落地 JSON
                 output = self._read_output(output_file)
 
                 if result.returncode != 0:
@@ -150,7 +150,7 @@ class SandboxExecutor:
         db_config: dict[str, Any] | None = None,
         timeout: int | None = None,
     ) -> SandboxResult:
-        """Execute code in Docker sandbox."""
+        """Docker 路径：只读挂载脚本、禁网、裁剪特权；日志从容器的 logs() 读取。"""
         start_time = time.time()
         container = None
 
@@ -205,7 +205,7 @@ class SandboxExecutor:
     def _prepare_code(
         self, code: str, db_config: dict[str, Any] | None, output_file: Path | None = None
     ) -> str:
-        """Prepare code with output capture."""
+        """在用户代码外包一层 DB_CONFIG 注入与 result→JSON 落盘，便于宿主读取。"""
         db_config_json = json.dumps(db_config) if db_config else "{}"
         output_path = str(output_file) if output_file else "/tmp/output.json"
 
@@ -233,7 +233,7 @@ except Exception as e:
 '''
 
     def _run_container(self, code_file: Path, timeout: int | None) -> "Container":
-        """Run Docker container with security hardening."""
+        """创建一次性容器：resource/capability/network 均收紧；detach 便于 wait + 清理。"""
         timeout = timeout or self._settings.sandbox_timeout
         if self._client is None:
             raise RuntimeError("Docker client not initialized")
@@ -256,7 +256,7 @@ except Exception as e:
         )
 
     def _get_output(self, output_file: Path) -> dict[str, Any]:
-        """Get output from container."""
+        """Docker 结束后读宿主临时目录中的 output（与本地模式路径约定一致）。"""
         if output_file.exists():
             try:
                 content = output_file.read_text()
@@ -271,7 +271,7 @@ except Exception as e:
         return {"status": "no_output"}
 
     def _read_output(self, output_file: Path) -> dict[str, Any]:
-        """Read output from local execution."""
+        """本地子进程写回访目录下的 output.json。"""
         if output_file.exists():
             try:
                 content = output_file.read_text()

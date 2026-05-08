@@ -1,4 +1,4 @@
-"""Data Understanding Agent - understands data structure and business semantics."""
+"""数据理解 Agent：拉取 schema/样本，调用 LLM 产出结构化 DataDictionary。"""
 
 import json
 from typing import Any
@@ -11,7 +11,7 @@ from src.models.task import DatabaseConfig
 
 
 class DataUnderstandingAgent(BaseAgent[DatabaseConfig, DataDictionary]):
-    """Agent that understands data structure and generates data dictionary."""
+    """流水线第一步：把物理库结构与客户业务文档对齐为机器可读字典。"""
 
     @property
     def name(self) -> str:
@@ -22,20 +22,13 @@ class DataUnderstandingAgent(BaseAgent[DatabaseConfig, DataDictionary]):
         return "Analyzes database structure and generates data dictionary"
 
     async def execute(self, input_data: DatabaseConfig) -> DataDictionary:
-        """Execute data understanding.
-
-        Args:
-            input_data: Database configuration
-
-        Returns:
-            DataDictionary with table info and relations
-        """
+        """兼容仅传入 DatabaseConfig 的调用；业务文档为空字符串。"""
         return await self.execute_with_context(input_data, "")
 
     def _parse_response(self, response: str) -> DataDictionary:
-        """Parse LLM response to DataDictionary."""
+        """清洗 markdown/JSON 边界并解析为 DataDictionary；失败时返回占位对象而非抛异常。"""
         try:
-            # Handle response that might be a list with thinking/text blocks
+            # 处理可能是 thinking/text 块组成的 JSON 数组响应
             if response.startswith("["):
                 # Try to parse as list and extract text content
                 try:
@@ -47,7 +40,7 @@ class DataUnderstandingAgent(BaseAgent[DatabaseConfig, DataDictionary]):
                 except json.JSONDecodeError:
                     pass
 
-            # Clean response - remove markdown code blocks if present
+            # 去掉 ```json 围栏，提取首尾花括号之间的 JSON
             cleaned = response.strip()
             if cleaned.startswith("```"):
                 # Remove opening ```json or ```
@@ -68,7 +61,7 @@ class DataUnderstandingAgent(BaseAgent[DatabaseConfig, DataDictionary]):
         except (json.JSONDecodeError, ValueError, TypeError, KeyError) as e:
             self._log_execution(f"Failed to parse LLM response: {e}")
 
-        # Return empty dictionary if parsing fails
+        # 解析失败：返回空壳字典，编排器仍可继续但下游质量受限
         return DataDictionary(
             tables=[],
             relations=[],
@@ -81,20 +74,12 @@ class DataUnderstandingAgent(BaseAgent[DatabaseConfig, DataDictionary]):
         db_config: DatabaseConfig,
         business_doc: str,
     ) -> DataDictionary:
-        """Execute with business context.
-
-        Args:
-            db_config: Database configuration
-            business_doc: Business documentation
-
-        Returns:
-            DataDictionary with enriched business context
-        """
+        """推荐入口：并发-safe 的数据库访问 + LLM；finally 中确保关闭连接器。"""
         self._log_execution("Connecting to database...")
         connector = DatabaseConnector(db_config)
 
         try:
-            # Database operations
+            # 数据库侧：schema + 表枚举 + 每表抽样（最多前 10 张表控制体量）
             try:
                 self._log_execution("Fetching schema information...")
                 schema_info = await connector.get_schema_info()
@@ -110,7 +95,7 @@ class DataUnderstandingAgent(BaseAgent[DatabaseConfig, DataDictionary]):
                 self._log_execution(f"Database operation failed: {e}")
                 raise
 
-            # LLM operation
+            # LLM 侧：拼装 PromptTemplates 数据理解模板
             try:
                 self._log_execution("Generating data dictionary with LLM...")
                 system_prompt, user_prompt = PromptTemplates.format_data_understanding(

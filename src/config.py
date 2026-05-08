@@ -1,4 +1,4 @@
-"""Configuration management using pydantic-settings."""
+"""应用配置：自 .env / 环境变量加载；含 LLM、数据库默认 URL、沙箱资源配额。"""
 
 from functools import lru_cache
 
@@ -6,7 +6,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    """Application settings loaded from environment variables."""
+    """全局可调参数；沙箱相关字段由 SandboxExecutor 读取。"""
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -41,5 +41,5 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    """Get cached settings instance."""
+    """进程内单例缓存，避免重复解析 .env。"""
     return Settings()

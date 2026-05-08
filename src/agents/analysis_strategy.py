@@ -1,4 +1,4 @@
-"""Analysis Strategy Agent - designs analysis strategies based on goals."""
+"""分析策略 Agent：输入数据字典与业务目标，输出 JSON 形态的分析计划（指标、步骤等）。"""
 
 import json
 from typing import Any
@@ -21,7 +21,7 @@ class AnalysisStrategyInput:
 
 
 class AnalysisStrategyAgent(BaseAgent[AnalysisStrategyInput, dict[str, Any]]):
-    """Agent that designs analysis strategies."""
+    """流水线第二步：把「要看什么」转成后续代码生成可消费的结构化策略。"""
 
     @property
     def name(self) -> str:
@@ -32,7 +32,7 @@ class AnalysisStrategyAgent(BaseAgent[AnalysisStrategyInput, dict[str, Any]]):
         return "Designs data analysis strategies based on data dictionary and business goals"
 
     async def execute(self, input_data: AnalysisStrategyInput) -> dict[str, Any]:
-        """Execute strategy design."""
+        """调用 LLM 生成策略 JSON；失败向上抛出由编排器处理。"""
         self._log_execution("Designing analysis strategy...")
         try:
             system_prompt, user_prompt = PromptTemplates.format_analysis_strategy(
@@ -48,7 +48,7 @@ class AnalysisStrategyAgent(BaseAgent[AnalysisStrategyInput, dict[str, Any]]):
             raise
 
     def _parse_response(self, response: str) -> dict[str, Any]:
-        """Parse LLM response to strategy dict."""
+        """与数据理解类似的清洗逻辑；无法解析时返回带 raw_response 的空骨架。"""
         try:
             # Handle response that might be a list with thinking/text blocks
             if response.startswith("["):

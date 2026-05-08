@@ -1,4 +1,4 @@
-"""Database connector for querying data."""
+"""异步数据库访问：元数据查询、抽样读数与受限 SQL（仅 SELECT）。"""
 
 import re
 from typing import Any
@@ -10,10 +10,10 @@ from src.models.task import DatabaseConfig
 
 
 class DatabaseConnector:
-    """Async database connector."""
+    """基于 SQLAlchemy asyncio 引擎的统一入口；PostgreSQL 走 asyncpg，SQLite 走 aiosqlite。"""
 
     def __init__(self, config: DatabaseConfig) -> None:
-        """Initialize database connector."""
+        """根据 DatabaseConfig 构造引擎；自动将 postgresql:// 转为异步驱动 URL。"""
         self._config = config
         self._is_sqlite = config.db_type == "sqlite"
         connection_url = config.connection_url
@@ -33,7 +33,7 @@ class DatabaseConnector:
         )
 
     async def get_schema_info(self) -> list[dict[str, Any]]:
-        """Get database schema information."""
+        """返回列级 schema（表名、列名、类型、可空性）；SQLite 用 PRAGMA 模拟同样结构。"""
         if self._is_sqlite:
             return await self._get_sqlite_schema_info()
 
@@ -56,7 +56,7 @@ class DatabaseConnector:
             raise RuntimeError(f"Failed to get schema info: {e}") from e
 
     async def _get_sqlite_schema_info(self) -> list[dict[str, Any]]:
-        """Get schema info for SQLite."""
+        """枚举用户表并对每张表执行 PRAGMA table_info，对齐 PG information_schema 字段语义。"""
         try:
             async with self._session_factory() as session:
                 tables_result = await session.execute(
@@ -82,7 +82,7 @@ class DatabaseConnector:
             raise RuntimeError(f"Failed to get SQLite schema info: {e}") from e
 
     async def get_table_names(self) -> list[str]:
-        """Get list of table names."""
+        """列出当前 schema（PG）或 SQLite 文件内的业务表名。"""
         if self._is_sqlite:
             return await self._get_sqlite_table_names()
 
@@ -101,7 +101,7 @@ class DatabaseConnector:
             raise RuntimeError(f"Failed to get table names: {e}") from e
 
     async def _get_sqlite_table_names(self) -> list[str]:
-        """Get table names for SQLite."""
+        """通过 sqlite_master 过滤系统表。"""
         try:
             async with self._session_factory() as session:
                 result = await session.execute(
@@ -112,8 +112,8 @@ class DatabaseConnector:
             raise RuntimeError(f"Failed to get SQLite table names: {e}") from e
 
     async def get_sample_data(self, table_name: str, limit: int = 100) -> list[dict[str, Any]]:
-        """Get sample data from a table."""
-        # Validate table name with strict regex
+        """按表拉取最多 limit 行样本；表名经正则白名单校验以防标识符注入。"""
+        # 仅允许字母数字下划线且不以数字开头，避免动态 SQL 中的标识符注入
         if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', table_name):
             raise ValueError(f"Invalid table name: {table_name}")
 
@@ -127,8 +127,8 @@ class DatabaseConnector:
             raise RuntimeError(f"Failed to get sample data from table '{table_name}': {e}") from e
 
     async def execute_query(self, sql: str) -> list[dict[str, Any]]:
-        """Execute a SQL query and return results."""
-        # Security: Only allow SELECT queries to prevent SQL injection
+        """执行只读查询并返回行字典列表；非 SELECT 一律拒绝。"""
+        # 安全：限制为 SELECT，降低 Agent 生成代码时的写入风险
         if not sql.strip().upper().startswith('SELECT'):
             raise ValueError("Only SELECT queries are allowed for security reasons")
 
@@ -142,8 +142,8 @@ class DatabaseConnector:
             raise RuntimeError(f"Failed to execute query: {e}") from e
 
     async def execute_aggregation(self, sql: str) -> dict[str, Any]:
-        """Execute aggregation query for statistics."""
-        # Security: Only allow SELECT queries to prevent SQL injection
+        """执行聚合类 SELECT，取首行映射为 dict（空结果返回 {}）。"""
+        # 安全：限制为 SELECT，降低 Agent 生成代码时的写入风险
         if not sql.strip().upper().startswith('SELECT'):
             raise ValueError("Only SELECT queries are allowed for security reasons")
 
@@ -160,5 +160,5 @@ class DatabaseConnector:
             raise RuntimeError(f"Failed to execute aggregation query: {e}") from e
 
     async def close(self) -> None:
-        """Close database connection."""
+        """释放连接池与底层引擎。"""
         await self._engine.dispose()
