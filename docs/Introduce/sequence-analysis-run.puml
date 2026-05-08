@@ -1,0 +1,63 @@
+@startuml insight-x-sequence-run
+' 创建任务并执行分析（与 sequence-analysis-run.mermaid 对应）
+skinparam backgroundColor #FEFEFE
+title Insight-X — 典型调用：创建任务并运行分析
+
+actor "客户端" as C
+participant "FastAPI" as API
+database "内存存储" as Mem
+participant "AnalysisOrchestrator" as Orch
+participant "DataUnderstandingAgent" as A1
+participant "AnalysisStrategyAgent" as A2
+participant "CodeGenerationAgent" as A3
+participant "CodeExecutionAgent" as A4
+participant "InsightGenerationAgent" as A5
+participant "DatabaseConnector" as DB
+participant "LLMClient" as LLM
+participant "SandboxExecutor" as SB
+
+C -> API : POST /api/v1/tasks
+API -> Mem : 保存 AnalysisTask (PENDING)
+API --> C : task_id
+
+C -> API : POST /api/v1/tasks/{id}/run
+API -> Mem : mark_running()
+API -> Orch : run_analysis(task)
+
+Orch -> A1 : execute_with_context(...)
+A1 -> DB : schema / 表名 / 抽样
+DB --> A1 : 元数据与样本
+A1 -> LLM : 数据理解 Prompt
+LLM --> A1 : JSON 数据字典
+A1 --> Orch : DataDictionary
+
+Orch -> A2 : execute(strategy input)
+A2 -> LLM : 策略 Prompt
+LLM --> A2 : 分析计划 JSON
+A2 --> Orch : strategy
+
+Orch -> A3 : execute(code gen input)
+A3 -> LLM : 代码生成 Prompt
+LLM --> A3 : Python 源码
+A3 --> Orch : generated_code
+
+Orch -> A4 : execute(代码 + db_config)
+A4 -> SB : execute(...线程池包装)
+SB --> A4 : ExecutionResult
+A4 --> Orch : ExecutionResult
+
+note over Orch, A5
+执行失败仍进入洞察，
+stats 可为空 {}
+end note
+
+Orch -> A5 : execute(data_dict + stats)
+A5 -> LLM : 洞察 Prompt
+LLM --> A5 : Insight 列表
+A5 --> Orch : insights
+
+Orch --> API : AnalysisResult
+API -> Mem : 写入结果 COMPLETED
+API --> C : AnalysisResultResponse
+
+@enduml

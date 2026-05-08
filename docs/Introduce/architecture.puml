@@ -1,0 +1,58 @@
+@startuml insight-x-architecture
+' Insight-X 逻辑架构（与 architecture.mermaid 对应）
+skinparam backgroundColor #FEFEFE
+skinparam componentStyle rectangle
+title Insight-X — 逻辑组件架构
+
+package "客户端 / 调用方" {
+  [HTTP Client] as U
+}
+
+package "Insight-X API" {
+  [FastAPI\n<<src/main.py>>] as FA
+  database "_task_store /\n_result_store" as MEM
+  [AnalysisOrchestrator\n<<src/orchestrator.py>>] as ORCH
+}
+
+package "Agent 编排（五步）" {
+  [DataUnderstandingAgent] as A1
+  [AnalysisStrategyAgent] as A2
+  [CodeGenerationAgent] as A3
+  [CodeExecutionAgent] as A4
+  [InsightGenerationAgent] as A5
+}
+
+package "基础设施" {
+  [LLMClient /\nAnthropic | OpenAI] as LLM
+  [DatabaseConnector] as DB
+  [SandboxExecutor] as SB
+}
+
+cloud "外部" {
+  database "用户业务库" as USERDB
+  cloud "云端 LLM API" as LLMAPI
+  [Docker Daemon\n(可选)] as DOCKER
+}
+
+U --> FA : REST
+FA <--> MEM
+FA --> ORCH
+ORCH --> A1
+A1 --> A2
+A2 --> A3
+A3 --> A4
+A4 --> A5
+
+A1 --> DB
+A1 --> LLM
+A2 --> LLM
+A3 --> LLM
+A5 --> LLM
+A4 --> SB
+
+DB --> USERDB
+LLM --> LLMAPI
+SB .. DOCKER : 可选
+SB .. USERDB : 生成代码含 DB_CONFIG\n运行时可连库
+
+@enduml

@@ -1,0 +1,29 @@
+@startuml insight-x-orchestrator-pipeline
+' AnalysisOrchestrator.run_analysis（与 orchestrator-pipeline.mermaid 对应）
+skinparam backgroundColor #FEFEFE
+title Insight-X — 编排器五步流水线与分支
+
+start
+:收到 AnalysisTask;
+:① 数据理解\n库元数据 + 抽样 + LLM;
+:② 分析策略\nLLM 产出 metrics/steps;
+:③ 代码生成\nLLM 产出 Python;
+:④ 沙箱执行\nSandboxExecutor;
+
+if (执行成功?) then (是)
+  :stats = execution.output;
+else (否)
+  :stats = {}\n继续流水线;
+endif
+
+:⑤ 洞察生成\nLLM + data_dict + stats;
+:返回 AnalysisResult;
+stop
+
+legend right
+  | 说明 |
+  | ④ 失败不中断 ⑤；stats 为空对象 |
+  | ①～③ 或 ⑤ 未捕获异常则整条流水线失败 |
+endlegend
+
+@enduml

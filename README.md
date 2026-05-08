@@ -52,7 +52,10 @@ insight-x/
 │       └── executor.py            # Docker 沙箱执行器
 ├── tests/                         # 测试套件
 ├── docs/
-│   └── openapi.yaml               # OpenAPI 规范
+│   ├── Introduce/               # 架构 / 时序 / 流程图源 (.mermaid + .puml)
+│   │   └── README.md
+│   ├── community-diagrams.md    # 架构 / 时序 / 流程（Mermaid 内嵌）
+│   └── openapi.yaml             # OpenAPI 规范
 ├── pyproject.toml                 # 项目配置
 ├── requirements.txt               # 依赖清单
 ├── Dockerfile                     # API 服务镜像
@@ -523,6 +526,8 @@ class MyAgent(BaseAgent[str, str]):
 
 ## 相关文档
 
+- [图示源文件（Mermaid / PlantUML）](docs/Introduce/README.md) - `docs/Introduce/` 独立图源
+- [架构与时序图示](docs/community-diagrams.md) - Markdown 内嵌 Mermaid（社区速览）
 - [开发指南](CLAUDE.md) - 项目开发规范
 - [OpenAPI 规范](docs/openapi.yaml) - API 接口定义
 - [设计文档](docs/superpowers/specs/2026-05-06-ai-agent-data-analysis-platform-design.md) - 架构设计详情
