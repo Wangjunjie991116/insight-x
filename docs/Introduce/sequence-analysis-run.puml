@@ -3,18 +3,18 @@
 skinparam backgroundColor #FEFEFE
 title Insight-X — 典型调用：创建任务并运行分析
 
-actor "客户端" as C
-participant "FastAPI" as API
-database "内存存储" as Mem
-participant "AnalysisOrchestrator" as Orch
-participant "DataUnderstandingAgent" as A1
-participant "AnalysisStrategyAgent" as A2
-participant "CodeGenerationAgent" as A3
-participant "CodeExecutionAgent" as A4
-participant "InsightGenerationAgent" as A5
-participant "DatabaseConnector" as DB
-participant "LLMClient" as LLM
-participant "SandboxExecutor" as SB
+actor "客户端\nHTTP/API Client" as C
+participant "REST 入口\nFastAPI" as API
+database "任务与结果缓存\nstore" as Mem
+participant "流水线编排\nAnalysisOrchestrator" as Orch
+participant "数据理解 Agent①\nDataUnderstandingAgent" as A1
+participant "策略设计 Agent②\nAnalysisStrategyAgent" as A2
+participant "代码生成 Agent③\nCodeGenerationAgent" as A3
+participant "执行分析 Agent④\nCodeExecutionAgent" as A4
+participant "洞察生成 Agent⑤\nInsightGenerationAgent" as A5
+participant "异步数据库访问\nDatabaseConnector" as DB
+participant "大模型统一封装\nLLMClient" as LLM
+participant "沙箱执行\nSandboxExecutor" as SB
 
 C -> API : POST /api/v1/tasks
 API -> Mem : 保存 AnalysisTask (PENDING)
