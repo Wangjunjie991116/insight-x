@@ -1,20 +1,27 @@
 @startuml insight-x-sequence-run
-' 创建任务并执行分析（与 sequence-analysis-run.mermaid 对应）
+' 创建任务并执行分析 + 代码优化扩展（与 sequence-analysis-run.mermaid 对应）
 skinparam backgroundColor #FEFEFE
-title Insight-X — 典型调用：创建任务并运行分析
+title Insight-X — 典型调用：任务创建 → 数据分析 → 代码优化 Patch
 
 actor "客户端\nHTTP/API Client" as C
 participant "REST 入口\nFastAPI" as API
-database "任务与结果缓存\nstore" as Mem
-participant "流水线编排\nAnalysisOrchestrator" as Orch
+database "任务/结果/优化\n内存缓存" as Mem
+participant "分析流水线\nAnalysisOrchestrator" as Orch
+participant "代码优化流水线\nCodeOptimizationOrchestrator" as CORCH
 participant "数据理解 Agent①\nDataUnderstandingAgent" as A1
 participant "策略设计 Agent②\nAnalysisStrategyAgent" as A2
 participant "代码生成 Agent③\nCodeGenerationAgent" as A3
 participant "执行分析 Agent④\nCodeExecutionAgent" as A4
 participant "洞察生成 Agent⑤\nInsightGenerationAgent" as A5
+participant "代码优化分析 Agent⑥-1\nCodeOptimizationAnalysisAgent" as A61
+participant "埋点策略 Agent⑥-2\nTrackingStrategyAgent" as A62
+participant "代码实现 Agent⑦\nCodeImplementationAgent" as A7
 participant "异步数据库访问\nDatabaseConnector" as DB
 participant "大模型统一封装\nLLMClient" as LLM
 participant "沙箱执行\nSandboxExecutor" as SB
+participant "Git 服务\nGitService" as GIT
+
+== 1. 创建与运行数据分析任务 ==
 
 C -> API : POST /api/v1/tasks
 API -> Mem : 保存 AnalysisTask (PENDING)
@@ -59,5 +66,51 @@ A5 --> Orch : insights
 Orch --> API : AnalysisResult
 API -> Mem : 写入结果 COMPLETED
 API --> C : AnalysisResultResponse
+
+== 2. 代码优化扩展（Agent 6-1 / 6-2 / 7 按需触发） ==
+
+C -> API : POST /api/v1/tasks/{id}/code-optimization\n{repo_url, branch}
+API -> Mem : 读取 insights
+API -> CORCH : run_code_optimization(...)
+CORCH -> GIT : clone_and_snapshot(repo_url)
+GIT --> CORCH : CodeRepository(files, tech_stack)
+CORCH -> A61 : execute(insights + repo)
+A61 -> LLM : 代码优化分析 Prompt
+LLM --> A61 : CodeChangeSuggestion[]
+A61 --> CORCH : suggestions
+CORCH --> API : suggestions
+API -> Mem : 写入 _code_opt_store
+API --> C : CodeOptimizationResponse
+
+C -> API : POST /api/v1/tasks/{id}/tracking-strategy\n{repo_url, branch}
+API -> Mem : 读取 insights + business_doc
+API -> CORCH : run_tracking_strategy(...)
+CORCH -> GIT : clone_and_snapshot(repo_url)
+GIT --> CORCH : CodeRepository
+CORCH -> A62 : execute(insights + repo + doc)
+A62 -> LLM : 埋点策略 Prompt
+LLM --> A62 : TrackingStrategyReport
+A62 --> CORCH : report
+CORCH --> API : report
+API -> Mem : 写入 _tracking_store
+API --> C : TrackingStrategyResponse
+
+C -> API : POST /api/v1/tasks/{id}/code-implementation\n{repo_url, use_code_optimization, use_tracking_strategy}
+API -> Mem : 读取 suggestions + report
+API -> CORCH : run_code_implementation(...)
+CORCH -> GIT : clone_and_snapshot(repo_url)
+GIT --> CORCH : CodeRepository
+CORCH -> A7 : execute(repo + suggestions + report)
+A7 -> LLM : 代码实现 Prompt (按文件)
+LLM --> A7 : 修改后的源码
+A7 -> A7 : difflib.unified_diff()
+A7 --> CORCH : CodeImplementationOutput
+CORCH --> API : impl
+API -> Mem : 写入 _code_impl_store
+API --> C : CodeImplementationResponse
+
+C -> API : GET /api/v1/tasks/{id}/patch
+API -> Mem : 聚合 diff
+API --> C : { filename, patch }
 
 @enduml

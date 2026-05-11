@@ -10,11 +10,12 @@ package "客户端 / 调用方" {
 
 package "Insight-X API" {
   [FastAPI\n<<src/main.py>>] as FA
-  database "_task_store /\n_result_store" as MEM
+  database "_task_store /\n_result_store /\n_code_opt_store /\n_tracking_store /\n_code_impl_store" as MEM
   [AnalysisOrchestrator\n<<src/orchestrator.py>>] as ORCH
+  [CodeOptimizationOrchestrator\n<<src/orchestrator.py>>] as CORCH
 }
 
-package "Agent 编排（五步）" {
+package "Agent 编排 — 数据分析五步" {
   [DataUnderstandingAgent] as A1
   [AnalysisStrategyAgent] as A2
   [CodeGenerationAgent] as A3
@@ -22,26 +23,42 @@ package "Agent 编排（五步）" {
   [InsightGenerationAgent] as A5
 }
 
+package "Agent 编排 — 代码优化扩展" {
+  [CodeOptimizationAnalysisAgent\n(Agent 6-1)] as A61
+  [TrackingStrategyAgent\n(Agent 6-2)] as A62
+  [CodeImplementationAgent\n(Agent 7)] as A7
+}
+
 package "基础设施" {
   [LLMClient /\nAnthropic | OpenAI] as LLM
   [DatabaseConnector] as DB
   [SandboxExecutor] as SB
+  [GitService\n<<src/services/git_service.py>>] as GIT
 }
 
 cloud "外部" {
   database "用户业务库" as USERDB
   cloud "云端 LLM API" as LLMAPI
   [Docker Daemon\n(可选)] as DOCKER
+  cloud "Git 仓库\n(GitHub / GitLab)" as REPO
 }
 
 U --> FA : REST
 FA <--> MEM
 FA --> ORCH
+FA --> CORCH
+
 ORCH --> A1
 A1 --> A2
 A2 --> A3
 A3 --> A4
 A4 --> A5
+
+CORCH --> A61
+CORCH --> A62
+CORCH --> A7
+A61 ..> A7 : 建议流向
+A62 ..> A7 : 建议流向
 
 A1 --> DB
 A1 --> LLM
@@ -50,9 +67,17 @@ A3 --> LLM
 A5 --> LLM
 A4 --> SB
 
+A61 --> LLM
+A61 --> GIT
+A62 --> LLM
+A62 --> GIT
+A7 --> LLM
+A7 --> GIT
+
 DB --> USERDB
 LLM --> LLMAPI
 SB .. DOCKER : 可选
 SB .. USERDB : 生成代码含 DB_CONFIG\n运行时可连库
+GIT --> REPO : git clone
 
 @enduml

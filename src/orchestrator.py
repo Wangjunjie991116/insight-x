@@ -165,3 +165,131 @@ async def run_full_analysis(task: AnalysisTask) -> AnalysisResult:
     """便捷入口：每次新建编排器实例并执行完整流水线（适合 HTTP 单次请求模型）。"""
     orchestrator = AnalysisOrchestrator()
     return await orchestrator.run_analysis(task)
+
+
+# ───────────────────────────────────────────────────────────────────────────────
+# 代码优化与埋点实现编排器（Agent 6-1 / 6-2 / 7）
+# ───────────────────────────────────────────────────────────────────────────────
+
+from src.agents import (
+    CodeImplementationAgent,
+    CodeImplementationInput,
+    CodeOptimizationAnalysisAgent,
+    CodeOptimizationAnalysisInput,
+    TrackingStrategyAgent,
+    TrackingStrategyInput,
+)
+from src.models.code_analysis import (
+    CodeChangeSuggestion,
+    CodeImplementationOutput,
+    CodeRepository,
+    TrackingStrategyReport,
+)
+from src.services.git_service import GitService
+
+
+class CodeOptimizationOrchestrator:
+    """封装洞察 → 代码分析 → 代码修改的扩展流水线。
+
+    Agent 6-1（代码优化分析）与 Agent 6-2（埋点策略建议）可独立触发，
+    Agent 7（代码实现）可消费任意或全部上游产物生成 patch。
+    """
+
+    def __init__(self) -> None:
+        """初始化 Git 服务与三个 Agent。"""
+        self._git_service = GitService()
+        self._code_opt_agent = CodeOptimizationAnalysisAgent()
+        self._tracking_agent = TrackingStrategyAgent()
+        self._impl_agent = CodeImplementationAgent()
+
+    async def run_code_optimization(
+        self,
+        insights: list[Insight],
+        business_goal: str,
+        repo_url: str,
+        branch: str = "main",
+    ) -> list[CodeChangeSuggestion]:
+        """独立运行 Agent 6-1：拉取仓库 → 分析代码优化点。"""
+        self._log_step("Agent 6-1", "Cloning repository...")
+        repo = await self._git_service.clone_and_snapshot(repo_url, branch)
+
+        self._log_step("Agent 6-1", f"Repo cloned: {len(repo.files)} files, stack={repo.tech_stack}")
+        input_data = CodeOptimizationAnalysisInput(
+            insights=insights,
+            business_goal=business_goal,
+            repo=repo,
+        )
+        return await self._code_opt_agent.execute(input_data)
+
+    async def run_tracking_strategy(
+        self,
+        insights: list[Insight],
+        business_goal: str,
+        business_doc: str,
+        repo_url: str,
+        branch: str = "main",
+        existing_events: list[str] | None = None,
+    ) -> TrackingStrategyReport:
+        """独立运行 Agent 6-2：拉取仓库 → 设计埋点策略。"""
+        self._log_step("Agent 6-2", "Cloning repository...")
+        repo = await self._git_service.clone_and_snapshot(repo_url, branch)
+
+        self._log_step("Agent 6-2", f"Repo cloned: {len(repo.files)} files, stack={repo.tech_stack}")
+        input_data = TrackingStrategyInput(
+            insights=insights,
+            business_goal=business_goal,
+            business_doc=business_doc,
+            repo=repo,
+            existing_events=existing_events or [],
+        )
+        return await self._tracking_agent.execute(input_data)
+
+    async def run_code_implementation(
+        self,
+        repo_url: str,
+        code_suggestions: list[CodeChangeSuggestion] | None = None,
+        tracking_report: TrackingStrategyReport | None = None,
+        branch: str = "main",
+    ) -> CodeImplementationOutput:
+        """运行 Agent 7：拉取仓库 → 生成代码修改 patch。
+
+        至少提供 code_suggestions 或 tracking_report 之一。
+        """
+        self._log_step("Agent 7", "Cloning repository...")
+        repo = await self._git_service.clone_and_snapshot(repo_url, branch)
+
+        self._log_step("Agent 7", f"Repo cloned: {len(repo.files)} files")
+        input_data = CodeImplementationInput(
+            repo=repo,
+            code_suggestions=code_suggestions or [],
+            tracking_report=tracking_report,
+        )
+        return await self._impl_agent.execute(input_data)
+
+    async def run_full_code_pipeline(
+        self,
+        insights: list[Insight],
+        business_goal: str,
+        business_doc: str,
+        repo_url: str,
+        branch: str = "main",
+        existing_events: list[str] | None = None,
+    ) -> CodeImplementationOutput:
+        """串行运行 6-1 → 6-2 → 7 的完整代码优化流水线。"""
+        self._log_step("Pipeline", "Starting full code optimization pipeline...")
+
+        suggestions = await self.run_code_optimization(insights, business_goal, repo_url, branch)
+        tracking = await self.run_tracking_strategy(
+            insights, business_goal, business_doc, repo_url, branch, existing_events
+        )
+
+        return await self.run_code_implementation(
+            repo_url=repo_url,
+            code_suggestions=suggestions,
+            tracking_report=tracking,
+            branch=branch,
+        )
+
+    def _log_step(self, step: str, message: str) -> None:
+        """打印带步骤标识的日志。"""
+        print(f"[{step}] {message}")

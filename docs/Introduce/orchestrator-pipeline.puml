@@ -1,29 +1,57 @@
 @startuml insight-x-orchestrator-pipeline
-' AnalysisOrchestrator.run_analysis（与 orchestrator-pipeline.mermaid 对应）
+' AnalysisOrchestrator.run_analysis + CodeOptimizationOrchestrator（与 orchestrator-pipeline.mermaid 对应）
 skinparam backgroundColor #FEFEFE
-title Insight-X — 编排器五步流水线与分支
+title Insight-X — 编排器流水线（数据分析五步 + 代码优化扩展）
 
 start
 :收到 AnalysisTask;
-:① 数据理解\n库元数据 + 抽样 + LLM;
-:② 分析策略\nLLM 产出 metrics/steps;
-:③ 代码生成\nLLM 产出 Python;
-:④ 沙箱执行\nSandboxExecutor;
 
-if (执行成功?) then (是)
-  :stats = execution.output;
+partition "AnalysisOrchestrator — 数据分析五步" {
+  :① 数据理解\n库元数据 + 抽样 + LLM;
+  :② 分析策略\nLLM 产出 metrics/steps;
+  :③ 代码生成\nLLM 产出 Python;
+  :④ 沙箱执行\nSandboxExecutor;
+
+  if (执行成功?) then (是)
+    :stats = execution.output;
+  else (否)
+    :stats = {}\n继续流水线;
+  endif
+
+  :⑤ 洞察生成\nLLM + data_dict + stats;
+  :返回 AnalysisResult;
+}
+
+if (用户请求代码优化?) then (是)
+
+partition "CodeOptimizationOrchestrator — 代码优化扩展" {
+  :GitService.clone_and_snapshot()\n拉取仓库 + 识别技术栈;
+
+  fork
+    :⑥-1 代码优化分析\nAgent 6-1\n(洞察 + 代码 → CodeChangeSuggestion[]);
+  fork again
+    :⑥-2 埋点策略建议\nAgent 6-2\n(洞察 + 代码 → TrackingStrategyReport);
+  end fork
+
+  if (6-1 / 6-2 有产出?) then (是)
+    :⑦ 代码修改实现\nAgent 7\n(difflib 生成 unified diff);
+    :返回 CodeImplementationOutput\n(可下载 Patch);
+  else (无)
+    :跳过 Agent 7;
+  endif
+}
+
 else (否)
-  :stats = {}\n继续流水线;
+  :流程结束;
 endif
 
-:⑤ 洞察生成\nLLM + data_dict + stats;
-:返回 AnalysisResult;
 stop
 
 legend right
   | 说明 |
   | ④ 失败不中断 ⑤；stats 为空对象 |
-  | ①～③ 或 ⑤ 未捕获异常则整条流水线失败 |
+  | ⑥-1 与 ⑥-2 可独立触发，也可串行 |
+  | ⑦ 至少需要 6-1 或 6-2 之一的产物 |
 endlegend
 
 @enduml

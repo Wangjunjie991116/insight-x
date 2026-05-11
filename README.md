@@ -13,56 +13,61 @@ Insight-X 是一个**完全自动化**的 AI Agent 数据分析平台，核心�
 - **代码生成**：自动生成可执行的 Python 分析代码
 - **安全执行**：在 Docker 沙箱中安全执行代码
 - **洞察生成**：从数据中提取业务洞察
-- **策略输出**（未来）：生成可执行的转化策略
-- **埋点实现**（未来）：自动设计和实现埋点代码
+- **代码优化分析**：基于洞察，AI 分析源代码可修改的具体位置（Agent 6-1）
+- **埋点策略建议**：AI 识别数据缺口，输出需补充采集的埋点方案（Agent 6-2）
+- **代码修改实现**：将优化建议与埋点策略转换为可下载的 patch 文件（Agent 7）
 
 ### 适用场景
 
 - 多业务团队数据分析（5+ 团队，数据完全隔离）
 - 埋点数据自动分析
-- 转化策略自动生成
-- 埋点自动设计与实现
+- 基于数据洞察的代码层自动优化建议
+- 埋点自动设计与实现（生成 patch 供 PR 审查）
 
 ## 目录结构
 
 ```
 insight-x/
 ├── src/
-│   ├── main.py                    # FastAPI 入口
-│   ├── orchestrator.py            # Agent 编排器
-│   ├── config.py                  # 配置管理
+│   ├── main.py                           # FastAPI 入口
+│   ├── orchestrator.py                   # Agent 编排器 (AnalysisOrchestrator + CodeOptimizationOrchestrator)
+│   ├── config.py                         # 配置管理
 │   ├── models/
-│   │   ├── task.py                # 任务模型 (AnalysisTask, DatabaseConfig)
-│   │   └── result.py              # 结果模型 (DataDictionary, Insight, Strategy)
+│   │   ├── task.py                       # 任务模型 (AnalysisTask, DatabaseConfig)
+│   │   ├── result.py                     # 分析结果模型 (DataDictionary, Insight, Strategy)
+│   │   └── code_analysis.py              # 代码分析模型 (CodeRepository, CodeChangeSuggestion, TrackingEventDesign, FileChange)
 │   ├── agents/
-│   │   ├── base.py                # Agent 抽象基类
-│   │   ├── data_understanding.py  # Agent 1: 数据理解
-│   │   ├── analysis_strategy.py   # Agent 2: 分析策略
-│   │   ├── code_generation.py     # Agent 3: 代码生成
-│   │   ├── code_execution.py      # Agent 4: 代码执行
-│   │   ├── insight_generation.py  # Agent 5: 洞察生成
-│   │   ├── strategy_design.py     # Agent 6: 策略设计（未来）
-│   │   └── tracking_impl.py       # Agent 7: 埋点实现（未来）
+│   │   ├── base.py                       # Agent 抽象基类
+│   │   ├── data_understanding.py         # Agent 1: 数据理解
+│   │   ├── analysis_strategy.py          # Agent 2: 分析策略
+│   │   ├── code_generation.py            # Agent 3: 代码生成
+│   │   ├── code_execution.py             # Agent 4: 代码执行
+│   │   ├── insight_generation.py         # Agent 5: 洞察生成
+│   │   ├── code_optimization_analysis.py # Agent 6-1: 代码优化分析
+│   │   ├── tracking_strategy.py          # Agent 6-2: 埋点策略建议
+│   │   └── code_implementation.py        # Agent 7: 代码修改实现
 │   ├── llm/
-│   │   ├── client.py              # LLM 客户端 (Anthropic/OpenAI)
-│   │   └── prompts.py             # Prompt 模板库
+│   │   ├── client.py                     # LLM 客户端 (Anthropic/OpenAI)
+│   │   └── prompts.py                    # Prompt 模板库
 │   ├── db/
-│   │   └── connector.py           # 异步数据库连接器
+│   │   └── connector.py                  # 异步数据库连接器
+│   ├── services/
+│   │   └── git_service.py                # Git 仓库克隆与技术栈识别
 │   └── sandbox/
-│       └── executor.py            # Docker 沙箱执行器
-├── tests/                         # 测试套件
+│       └── executor.py                   # Docker 沙箱执行器
+├── tests/                                # 测试套件
 ├── docs/
-│   ├── Introduce/               # 架构 / 时序 / 流程图源 (.mermaid + .puml)
+│   ├── Introduce/                        # 架构 / 时序 / 流程图源 (.mermaid + .puml)
 │   │   └── README.md
-│   ├── community-diagrams.md    # 架构 / 时序 / 流程（Mermaid 内嵌）
-│   └── openapi.yaml             # OpenAPI 规范
-├── pyproject.toml                 # 项目配置
-├── requirements.txt               # 依赖清单
-├── Dockerfile                     # API 服务镜像
-├── Dockerfile.sandbox             # 沙箱执行镜像
-├── docker-compose.yml             # 容器编排配置
-├── CLAUDE.md                      # 开发指南
-└── .env.example                   # 环境变量模板
+│   ├── community-diagrams.md             # 架构 / 时序 / 流程（Mermaid 内嵌）
+│   └── openapi.yaml                      # OpenAPI 规范
+├── pyproject.toml                        # 项目配置
+├── requirements.txt                      # 依赖清单
+├── Dockerfile                            # API 服务镜像
+├── Dockerfile.sandbox                    # 沙箱执行镜像
+├── docker-compose.yml                    # 容器编排配置
+├── CLAUDE.md                             # 开发指南
+└── .env.example                          # 环境变量模板
 ```
 
 ## 技术栈
@@ -88,32 +93,40 @@ insight-x/
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐         │
 │  │ 数据源配置   │  │ 业务文档     │  │ 业务目标     │         │
 │  └──────────────┘  └──────────────┘  └──────────────┘         │
+│  ┌──────────────────────────────────────────────────┐         │
+│  │ Git 仓库地址 + 分支（Agent 6-1/6-2/7 按需拉取）   │         │
+│  └──────────────────────────────────────────────────┘         │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────────┐
-│                    AI Agent 编排层                              │
+│                   AI Agent 编排层                               │
+│                                                                 │
+│  ─── 数据分析流水线 (AnalysisOrchestrator) ───                  │
 │  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐  │
 │  │ Agent 1 │ │ Agent 2 │ │ Agent 3 │ │ Agent 4 │ │ Agent 5 │  │
 │  │数据理解 │ │策略设计 │ │代码生成 │ │执行分析 │ │洞察生成 │  │
 │  └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘  │
-│  ┌─────────┐ ┌─────────┐                                      │
-│  │ Agent 6 │ │ Agent 7 │  （未来实现）                        │
-│  │策略输出 │ │埋点实现 │                                      │
-│  └─────────┘ └─────────┘                                      │
+│                                                                 │
+│  ─── 代码优化流水线 (CodeOptimizationOrchestrator) ───          │
+│  ┌────────────┐ ┌────────────┐          ┌──────────────┐       │
+│  │ Agent 6-1  │ │ Agent 6-2  │ ───────▶ │   Agent 7    │       │
+│  │代码优化分析│ │埋点策略建议│          │ 代码修改实现 │       │
+│  └────────────┘ └────────────┘          └──────────────┘       │
+│        (可独立触发，也可串行运行)                               │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────────┐
 │                      执行层                                     │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐         │
-│  │ Docker沙箱   │  │ 数据库       │  │ 代码仓库     │         │
-│  │ (代码执行)   │  │ (数据存储)   │  │ (埋点代码)   │         │
+│  │ Docker沙箱   │  │ 数据库       │  │ Git 服务     │         │
+│  │ (代码执行)   │  │ (数据存储)   │  │ (仓库拉取)   │         │
 │  └──────────────┘  └──────────────┘  └──────────────┘         │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────────┐
 │                      输出层                                     │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐         │
-│  │ 分析报告     │  │ 策略建议     │  │ 埋点代码     │         │
+│  │ 分析洞察     │  │ 优化/埋点建议│  │ Patch 文件   │         │
 │  └──────────────┘  └──────────────┘  └──────────────┘         │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -179,14 +192,22 @@ insight-x/
 [Agent 5] 洞察生成 Agent
     → 提取业务洞察和建议
     → 输出：业务洞察列表
+
+═══ 代码优化扩展流水线（需额外传入 Git 仓库）═══
     ↓
-[Agent 6] 策略设计 Agent（未来）
-    → 生成可执行的转化策略
-    → 输出：策略配置
+[Agent 6-1] 代码优化分析 Agent
+    → 基于洞察定位源代码可修改位置
+    → 输出：代码修改建议列表 (CodeChangeSuggestion)
+
+[Agent 6-2] 埋点策略建议 Agent
+    → 识别数据缺口，设计需要补充的埋点
+    → 输出：埋点策略报告 (TrackingStrategyReport)
+
+    （6-1 和 6-2 可独立触发）
     ↓
-[Agent 7] 埋点实现 Agent（未来）
-    → 设计和实现埋点代码
-    → 输出：埋点代码 PR
+[Agent 7] 代码修改实现 Agent
+    → 将 6-1 / 6-2 的建议转换为 unified diff
+    → 输出：可下载的 Patch 文件
     ↓
 输出结果
 ```
@@ -200,8 +221,9 @@ insight-x/
 | Agent 3 代码生成 | 数据字典 + 分析策略 | Python Code | 生成可执行分析代码 | ✅ 已实现 |
 | Agent 4 代码执行 | Python Code | ExecutionResult | Docker 沙箱安全执行 | ✅ 已实现 |
 | Agent 5 洞察生成 | 统计结果 | List[Insight] | 提取业务洞察和建议 | ✅ 已实现 |
-| Agent 6 策略设计 | 业务洞察 + 业务目标 | Strategy | 生成可执行的转化策略 | 🔜 未来 |
-| Agent 7 埋点实现 | 策略配置 + 代码仓库 | PR | 设计和实现埋点代码 | 🔜 未来 |
+| Agent 6-1 代码优化分析 | 洞察 + Git 仓库 | List[CodeChangeSuggestion] | 自动识别技术栈，定位源代码可优化位置 | ✅ 已实现 |
+| Agent 6-2 埋点策略建议 | 洞察 + Git 仓库 + 业务目标 | TrackingStrategyReport | 识别数据缺口，输出埋点设计与业务假设 | ✅ 已实现 |
+| Agent 7 代码修改实现 | 6-1 / 6-2 产物 + Git 仓库 | CodeImplementationOutput | 生成 unified diff 格式的可下载 Patch | ✅ 已实现 |
 
 ## 快速开始
 
@@ -263,8 +285,12 @@ docker-compose down
 | `/health` | GET | 健康检查 |
 | `/api/v1/tasks` | POST | 创建分析任务 |
 | `/api/v1/tasks/{id}` | GET | 获取任务状态 |
-| `/api/v1/tasks/{id}/run` | POST | 执行分析 |
+| `/api/v1/tasks/{id}/run` | POST | 执行分析（Agent 1-5） |
 | `/api/v1/tasks/{id}/result` | GET | 获取分析结果 |
+| `/api/v1/tasks/{id}/code-optimization` | POST | 运行 Agent 6-1：代码优化分析 |
+| `/api/v1/tasks/{id}/tracking-strategy` | POST | 运行 Agent 6-2：埋点策略建议 |
+| `/api/v1/tasks/{id}/code-implementation` | POST | 运行 Agent 7：生成 Patch |
+| `/api/v1/tasks/{id}/patch` | GET | 下载 Patch 文件内容 |
 
 ### 创建任务
 
@@ -296,6 +322,48 @@ curl -X POST http://localhost:8000/api/v1/tasks/{task_id}/run
 
 ```bash
 curl http://localhost:8000/api/v1/tasks/{task_id}/result
+```
+
+### 运行代码优化分析（Agent 6-1）
+
+```bash
+curl -X POST http://localhost:8000/api/v1/tasks/{task_id}/code-optimization \
+  -H "Content-Type: application/json" \
+  -d '{
+    "repo_url": "https://github.com/example/web-app.git",
+    "branch": "main"
+  }'
+```
+
+### 运行埋点策略建议（Agent 6-2）
+
+```bash
+curl -X POST http://localhost:8000/api/v1/tasks/{task_id}/tracking-strategy \
+  -H "Content-Type: application/json" \
+  -d '{
+    "repo_url": "https://github.com/example/web-app.git",
+    "branch": "main",
+    "existing_events": ["view_home", "add_to_cart", "purchase"]
+  }'
+```
+
+### 生成 Patch（Agent 7）
+
+```bash
+curl -X POST http://localhost:8000/api/v1/tasks/{task_id}/code-implementation \
+  -H "Content-Type: application/json" \
+  -d '{
+    "repo_url": "https://github.com/example/web-app.git",
+    "branch": "main",
+    "use_code_optimization": true,
+    "use_tracking_strategy": true
+  }'
+```
+
+### 下载 Patch
+
+```bash
+curl http://localhost:8000/api/v1/tasks/{task_id}/patch
 ```
 
 ## 命令脚本
@@ -449,9 +517,10 @@ def execute_with_retry(agent_func, max_retries=3):
 | 阶段 | 时间 | 内容 | 状态 |
 |------|------|------|------|
 | **Phase 1: MVP** | 2周 | Agent 1-5、单团队支持、基础分析能力 | ✅ 已完成 |
-| **Phase 2: 平台化** | 3周 | 多团队隔离、Agent 6-7、完整工作流 | 🔜 待开始 |
-| **Phase 3: 增强优化** | 2周 | 错误自愈机制、性能优化、监控告警 | 🔜 待开始 |
-| **Phase 4: 智能化** | 持续 | 模型微调、策略推荐优化、自动化程度提升 | 🔜 待开始 |
+| **Phase 2: 代码优化扩展** | 3周 | Agent 6-1 / 6-2 / 7、Git 集成、Patch 输出 | ✅ 已完成 |
+| **Phase 3: 平台化** | 3周 | 多团队隔离、完整工作流、持久化存储 | 🔜 待开始 |
+| **Phase 4: 增强优化** | 2周 | 错误自愈机制、性能优化、监控告警 | 🔜 待开始 |
+| **Phase 5: 智能化** | 持续 | 模型微调、策略推荐优化、自动化程度提升 | 🔜 待开始 |
 
 ## 成功标准
 

@@ -1,5 +1,13 @@
 """Data models for Insight-X."""
 
+from .code_analysis import (
+    CodeChangeSuggestion,
+    CodeImplementationOutput,
+    CodeRepository,
+    FileChange,
+    TrackingEventDesign,
+    TrackingStrategyReport,
+)
 from .result import (
     AnalysisResult,
     DataDictionary,
@@ -17,4 +25,11 @@ __all__ = [
     "Insight",
     "Strategy",
     "AnalysisResult",
+    # Code analysis models
+    "CodeRepository",
+    "CodeChangeSuggestion",
+    "TrackingEventDesign",
+    "TrackingStrategyReport",
+    "FileChange",
+    "CodeImplementationOutput",
 ]

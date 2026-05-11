@@ -10,9 +10,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from src.config import get_settings
-from src.models.result import AnalysisResult
+from src.models.code_analysis import CodeImplementationOutput
+from src.models.result import AnalysisResult, Insight
 from src.models.task import AnalysisTask, DatabaseConfig, TaskStatus
-from src.orchestrator import run_full_analysis
+from src.orchestrator import (
+    CodeOptimizationOrchestrator,
+    run_full_analysis,
+)
 
 
 # MVP：进程内字典存放任务与分析结果，重启即丢失；生产环境需替换为持久化存储
@@ -153,6 +157,68 @@ class HealthResponse(BaseModel):
     status: str = "healthy"
     version: str = "0.1.0"
     timestamp: datetime
+
+
+# ─── 代码优化与埋点相关请求/响应模型 ───────────────────────────
+
+class RunCodeOptimizationRequest(BaseModel):
+    """运行代码优化分析请求。"""
+
+    repo_url: str = Field(..., description="Git 仓库地址")
+    branch: str = Field(default="main", description="分支名")
+
+
+class CodeOptimizationResponse(BaseModel):
+    """代码优化分析响应。"""
+
+    task_id: str
+    suggestions: list[dict[str, Any]] = []
+    suggestion_count: int = 0
+    status: str = "completed"
+
+
+class RunTrackingStrategyRequest(BaseModel):
+    """运行埋点策略分析请求。"""
+
+    repo_url: str = Field(..., description="Git 仓库地址")
+    branch: str = Field(default="main", description="分支名")
+    existing_events: list[str] = Field(default_factory=list, description="已有埋点事件列表")
+
+
+class TrackingStrategyResponse(BaseModel):
+    """埋点策略分析响应。"""
+
+    task_id: str
+    new_events: list[dict[str, Any]] = []
+    gap_analysis: str = ""
+    priority_summary: list[str] = []
+    status: str = "completed"
+
+
+class RunCodeImplementationRequest(BaseModel):
+    """运行代码实现请求。"""
+
+    repo_url: str = Field(..., description="Git 仓库地址")
+    branch: str = Field(default="main", description="分支名")
+    use_code_optimization: bool = Field(default=True, description="是否使用已生成的代码优化建议")
+    use_tracking_strategy: bool = Field(default=True, description="是否使用已生成的埋点策略")
+
+
+class CodeImplementationResponse(BaseModel):
+    """代码实现响应。"""
+
+    task_id: str
+    changed_files: list[str] = []
+    pr_description: str = ""
+    test_suggestions: list[str] = []
+    status: str = "completed"
+
+
+# ─── 扩展内存存储（代码优化、埋点策略、代码实现） ─────────────────
+
+_code_opt_store: dict[str, list[dict[str, Any]]] = {}
+_tracking_store: dict[str, dict[str, Any]] = {}
+_code_impl_store: dict[str, dict[str, Any]] = {}
 
 
 # API Endpoints
@@ -316,6 +382,158 @@ async def list_tasks(team_id: str | None = None, limit: int = 100) -> list[TaskS
         )
         for t in tasks
     ]
+
+
+# ─── Agent 6-1 / 6-2 / 7 端点 ───────────────────────────────────
+
+@app.post(
+    "/api/v1/tasks/{task_id}/code-optimization",
+    response_model=CodeOptimizationResponse,
+    tags=["Code Optimization"],
+)
+async def run_code_optimization(
+    task_id: str, request: RunCodeOptimizationRequest
+) -> CodeOptimizationResponse:
+    """独立运行 Agent 6-1：基于任务洞察分析代码优化点。"""
+    task = _task_store.get(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    result = _result_store.get(task_id)
+    if not result or not result.insights:
+        raise HTTPException(status_code=400, detail="Task has no insights yet. Run analysis first.")
+
+    orchestrator = CodeOptimizationOrchestrator()
+    suggestions = await orchestrator.run_code_optimization(
+        insights=result.insights,
+        business_goal=task.business_goal,
+        repo_url=request.repo_url,
+        branch=request.branch,
+    )
+
+    suggestions_dict = [s.model_dump() for s in suggestions]
+    _code_opt_store[task_id] = suggestions_dict
+
+    return CodeOptimizationResponse(
+        task_id=task_id,
+        suggestions=suggestions_dict,
+        suggestion_count=len(suggestions_dict),
+    )
+
+
+@app.post(
+    "/api/v1/tasks/{task_id}/tracking-strategy",
+    response_model=TrackingStrategyResponse,
+    tags=["Tracking Strategy"],
+)
+async def run_tracking_strategy(
+    task_id: str, request: RunTrackingStrategyRequest
+) -> TrackingStrategyResponse:
+    """独立运行 Agent 6-2：基于任务洞察设计埋点策略。"""
+    task = _task_store.get(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    result = _result_store.get(task_id)
+    if not result or not result.insights:
+        raise HTTPException(status_code=400, detail="Task has no insights yet. Run analysis first.")
+
+    orchestrator = CodeOptimizationOrchestrator()
+    report = await orchestrator.run_tracking_strategy(
+        insights=result.insights,
+        business_goal=task.business_goal,
+        business_doc=task.business_doc,
+        repo_url=request.repo_url,
+        branch=request.branch,
+        existing_events=request.existing_events,
+    )
+
+    report_dict = report.model_dump()
+    _tracking_store[task_id] = report_dict
+
+    return TrackingStrategyResponse(
+        task_id=task_id,
+        new_events=[e.model_dump() for e in report.new_events],
+        gap_analysis=report.gap_analysis,
+        priority_summary=report.priority_summary,
+    )
+
+
+@app.post(
+    "/api/v1/tasks/{task_id}/code-implementation",
+    response_model=CodeImplementationResponse,
+    tags=["Code Implementation"],
+)
+async def run_code_implementation(
+    task_id: str, request: RunCodeImplementationRequest
+) -> CodeImplementationResponse:
+    """运行 Agent 7：将代码优化建议和/或埋点策略转换为 patch。"""
+    task = _task_store.get(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    code_suggestions = None
+    tracking_report = None
+
+    if request.use_code_optimization:
+        opts = _code_opt_store.get(task_id)
+        if opts:
+            from src.models.code_analysis import CodeChangeSuggestion
+            code_suggestions = [CodeChangeSuggestion(**o) for o in opts]
+
+    if request.use_tracking_strategy:
+        trk = _tracking_store.get(task_id)
+        if trk:
+            from src.models.code_analysis import TrackingStrategyReport
+            tracking_report = TrackingStrategyReport(**trk)
+
+    if not code_suggestions and not tracking_report:
+        raise HTTPException(
+            status_code=400,
+            detail="No code optimization or tracking strategy found for this task.",
+        )
+
+    orchestrator = CodeOptimizationOrchestrator()
+    impl = await orchestrator.run_code_implementation(
+        repo_url=request.repo_url,
+        code_suggestions=code_suggestions,
+        tracking_report=tracking_report,
+        branch=request.branch,
+    )
+
+    impl_dict = impl.model_dump()
+    _code_impl_store[task_id] = impl_dict
+
+    return CodeImplementationResponse(
+        task_id=task_id,
+        changed_files=[c.file_path for c in impl.changes],
+        pr_description=impl.pr_description,
+        test_suggestions=impl.test_suggestions,
+    )
+
+
+@app.get(
+    "/api/v1/tasks/{task_id}/patch",
+    tags=["Code Implementation"],
+)
+async def download_patch(task_id: str) -> dict[str, Any]:
+    """下载 Agent 7 生成的 patch 文件内容。"""
+    impl = _code_impl_store.get(task_id)
+    if not impl:
+        raise HTTPException(status_code=404, detail="No implementation result found")
+
+    changes = impl.get("changes", [])
+    patch_parts = []
+    for change in changes:
+        patch_parts.append(change.get("diff", ""))
+
+    full_patch = "\n".join(patch_parts)
+
+    return {
+        "task_id": task_id,
+        "filename": f"{task_id}.patch",
+        "patch": full_patch,
+    }
 
 
 # Root endpoint

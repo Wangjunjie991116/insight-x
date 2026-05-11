@@ -4,11 +4,24 @@
 
 ## 文件索引
 
-| 主题                                   | Mermaid                                                  | PlantUML |
-| -------------------------------------- | -------------------------------------------------------- | -------- |
-| 逻辑架构（组件与外部边界）             | [architecture.puml](architecture.puml)                   |
-| 典型时序（创建任务 + 运行分析）        | [sequence-analysis-run.puml](sequence-analysis-run.puml) |
-| 编排器五步与「执行失败仍生成洞察」分支 | [orchestrator-pipeline.puml](orchestrator-pipeline.puml) |
+| 主题                                                         | PlantUML |
+| ------------------------------------------------------------ | -------- |
+| 逻辑架构（API / 编排 / Agent / 基础设施 / 外部系统）         | [architecture.puml](architecture.puml) |
+| 典型时序（任务创建 + 数据分析五步 + 代码优化扩展）           | [sequence-analysis-run.puml](sequence-analysis-run.puml) |
+| 编排器流水线（Agent 1-5 主线 + Agent 6-1/6-2/7 扩展分支）    | [orchestrator-pipeline.puml](orchestrator-pipeline.puml) |
+
+## 图示覆盖的 Agent
+
+| Agent | 位置 | 对应流水线 |
+|-------|------|-----------|
+| Agent 1 数据理解 | AnalysisOrchestrator | 数据分析主线 |
+| Agent 2 分析策略 | AnalysisOrchestrator | 数据分析主线 |
+| Agent 3 代码生成 | AnalysisOrchestrator | 数据分析主线 |
+| Agent 4 代码执行 | AnalysisOrchestrator | 数据分析主线 |
+| Agent 5 洞察生成 | AnalysisOrchestrator | 数据分析主线 |
+| Agent 6-1 代码优化分析 | CodeOptimizationOrchestrator | 代码优化扩展 |
+| Agent 6-2 埋点策略建议 | CodeOptimizationOrchestrator | 代码优化扩展 |
+| Agent 7 代码修改实现 | CodeOptimizationOrchestrator | 代码优化扩展 |
 
 ## 如何预览
 

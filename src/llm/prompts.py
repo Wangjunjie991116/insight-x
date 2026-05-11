@@ -189,3 +189,190 @@ JSON结构如下：
                 stats=stats,
             ),
         )
+
+    # Agent 6-1: Code Optimization Analysis
+    CODE_OPTIMIZATION_ANALYSIS_SYSTEM = """你是一个全栈代码优化专家，擅长结合数据分析洞察定位代码层面的优化机会。
+
+任务：基于数据洞察和业务目标，分析给定的源代码仓库，指出可以修改哪些代码来优化业务指标。
+
+输出要求：
+1. 每条建议必须关联到具体的文件路径
+2. 给出当前代码片段和建议修改后的代码片段
+3. 说明修改理由（必须引用对应的数据洞察）
+4. 指出期望优化的业务指标
+
+输出格式：纯JSON数组，不要包含markdown代码块标记，不要包含任何解释文字。
+
+JSON结构如下：
+[
+  {
+    "file_path": "相对于仓库根目录的文件路径",
+    "line_range": [起始行号, 结束行号],
+    "current_code": "现有代码片段",
+    "suggested_code": "建议修改后的代码片段",
+    "rationale": "修改理由，引用数据洞察",
+    "target_metric": "期望优化的业务指标",
+    "confidence": 0.85
+  }
+]"""
+
+    CODE_OPTIMIZATION_ANALYSIS_USER = """业务目标：
+{business_goal}
+
+数据洞察：
+{insights}
+
+仓库技术栈：{tech_stack}
+
+仓库文件地图：
+{repo_map}
+
+请基于以上数据洞察，分析代码仓库中哪些具体位置可以修改以优化业务指标。输出JSON数组。"""
+
+    # Agent 6-2: Tracking Strategy
+    TRACKING_STRATEGY_SYSTEM = """你是一个数据埋点策略专家，擅长识别数据缺口并设计埋点方案。
+
+任务：基于当前代码、业务文档、业务目标和已有数据洞察，提出还需要哪些埋点采集策略来佐证或验证业务假设。
+
+输出要求：
+1. 每条埋点建议需包含事件名、触发条件、实现位置提示
+2. 说明该埋点要验证的业务假设
+3. 给出优先级（high/medium/low）
+4. 提供现有埋点缺口分析
+
+输出格式：纯JSON对象，不要包含markdown代码块标记，不要包含任何解释文字。
+
+JSON结构如下：
+{
+  "new_events": [
+    {
+      "event_name": "埋点事件名",
+      "trigger_condition": "触发条件",
+      "code_location": "建议植入的文件路径",
+      "implementation_hint": "实现提示",
+      "business_hypothesis": "待验证的业务假设",
+      "related_insight": "关联的洞察",
+      "priority": "high"
+    }
+  ],
+  "gap_analysis": "现有埋点缺口分析",
+  "priority_summary": ["按ROI排序的事件名列表"]
+}"""
+
+    TRACKING_STRATEGY_USER = """业务目标：
+{business_goal}
+
+业务背景：
+{business_doc}
+
+数据洞察：
+{insights}
+
+现有埋点事件：
+{existing_events}
+
+仓库技术栈：{tech_stack}
+
+仓库文件地图：
+{repo_map}
+
+请分析还需要采集哪些埋点数据来验证或优化业务目标。输出JSON对象。"""
+
+    # Agent 7: Code Implementation
+    CODE_IMPLEMENTATION_SYSTEM = """你是一个精确的代码编辑专家，只输出修改后的完整文件内容，不做任何解释。
+
+规则：
+1. 必须保持原始代码的格式、缩进和风格
+2. 只修改与建议相关的部分，其余代码原样保留
+3. 不要添加任何注释说明你为什么修改
+4. 输出必须是可直接写入文件的完整源码
+5. 如果是埋点类型，确保引入必要的埋点SDK或工具函数"""
+
+    CODE_IMPLEMENTATION_USER_OPTIMIZATION = """文件路径：{file_path}
+
+原始代码：
+```
+{original_code}
+```
+
+优化建议：
+{suggestions}
+
+请输出修改后的完整文件源码。不要包含markdown围栏，只输出纯代码。"""
+
+    CODE_IMPLEMENTATION_USER_TRACKING = """文件路径：{file_path}
+
+原始代码：
+```
+{original_code}
+```
+
+埋点事件设计：
+{suggestions}
+
+请输出植入埋点后的完整文件源码。不要包含markdown围栏，只输出纯代码。"""
+
+    @classmethod
+    def format_code_optimization_analysis(
+        cls,
+        insights: str,
+        business_goal: str,
+        repo_map: str,
+        tech_stack: str,
+    ) -> tuple[str, str]:
+        """Format code optimization analysis prompts."""
+        return (
+            cls.CODE_OPTIMIZATION_ANALYSIS_SYSTEM,
+            cls.CODE_OPTIMIZATION_ANALYSIS_USER.format(
+                insights=insights,
+                business_goal=business_goal,
+                repo_map=repo_map,
+                tech_stack=tech_stack,
+            ),
+        )
+
+    @classmethod
+    def format_tracking_strategy(
+        cls,
+        insights: str,
+        business_goal: str,
+        business_doc: str,
+        repo_map: str,
+        existing_events: str,
+        tech_stack: str,
+    ) -> tuple[str, str]:
+        """Format tracking strategy prompts."""
+        return (
+            cls.TRACKING_STRATEGY_SYSTEM,
+            cls.TRACKING_STRATEGY_USER.format(
+                insights=insights,
+                business_goal=business_goal,
+                business_doc=business_doc,
+                repo_map=repo_map,
+                existing_events=existing_events,
+                tech_stack=tech_stack,
+            ),
+        )
+
+    @classmethod
+    def format_code_implementation(
+        cls,
+        original_code: str,
+        file_path: str,
+        suggestions: str,
+        change_type: str,
+    ) -> tuple[str, str]:
+        """Format code implementation prompts."""
+        if change_type == "tracking":
+            user = cls.CODE_IMPLEMENTATION_USER_TRACKING.format(
+                original_code=original_code,
+                file_path=file_path,
+                suggestions=suggestions,
+            )
+        else:
+            user = cls.CODE_IMPLEMENTATION_USER_OPTIMIZATION.format(
+                original_code=original_code,
+                file_path=file_path,
+                suggestions=suggestions,
+            )
+        return cls.CODE_IMPLEMENTATION_SYSTEM, user
